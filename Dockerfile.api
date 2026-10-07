@@ -1,0 +1,12 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY NeuroVox/ NeuroVox/
+COPY BaseAuth/ BaseAuth/
+RUN dotnet restore NeuroVox/NeuroVox.WebApi/NeuroVox.WebApi.csproj
+RUN dotnet publish NeuroVox/NeuroVox.WebApi/NeuroVox.WebApi.csproj -c Release -o /app/out
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /app
+COPY --from=build /app/out .
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "NeuroVox.WebApi.dll"]

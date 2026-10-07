@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="NeuroVox.Application/NeuroVox.Application.csproj" />
+  <Project Path="NeuroVox.Domain/NeuroVox.Domain.csproj" />
+  <Project Path="NeuroVox.Infrastructure/NeuroVox.Infrastructure.csproj" />
+  <Project Path="NeuroVox.Persistence/NeuroVox.Persistence.csproj" />
+  <Project Path="NeuroVox.Tests/NeuroVox.Tests.csproj" />
+  <Project Path="NeuroVox.WebApi/NeuroVox.WebApi.csproj" />
+</Solution>

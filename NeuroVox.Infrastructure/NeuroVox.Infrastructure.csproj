@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NeuroVox.Domain\NeuroVox.Domain.csproj" />
+    <ProjectReference Include="..\NeuroVox.Application\NeuroVox.Application.csproj" />
+    <ProjectReference Include="..\NeuroVox.Persistence\NeuroVox.Persistence.csproj" />
+  </ItemGroup>
+
+</Project>

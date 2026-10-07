@@ -1,0 +1,6 @@
+@NeuroVox.WebApi_HostAddress = http://localhost:5270
+
+GET {{NeuroVox.WebApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
