@@ -24,7 +24,12 @@ namespace NeuroVox.WebApi.Services
 
     public interface ISpeechAnalysisClient
     {
-        Task<AnalysisResult?> AnalyzeAsync(string audioFilePath, Guid customerId, Guid visitId, Guid recordingId);
+        Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId);
+        /// <summary>Trains on the host; returns the artifact zip, or the reason it failed.</summary>
+        Task<(byte[]? Zip, string? Error)> TrainAsync(AiHost host, string csv);
+        /// <summary>Predictions are served by the local AI container, which holds the current model files.</summary>
+        /// <summary>Two-group statistics (numbers only) from the local AI container: {feature: {a:[..], b:[..]}} -> {results:[..]}.</summary>
+        Task<JsonElement?> CompareAsync(Dictionary<string, Dictionary<string, List<double>>> features);
         Task<JsonElement?> PredictAsync(Dictionary<string, double> features);
     }
 }

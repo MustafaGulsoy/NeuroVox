@@ -292,17 +292,116 @@ namespace NeuroVox.Persistence.Migrations
                     b.ToTable("FeatureMeasurements", "neurovox");
                 });
 
+            modelBuilder.Entity("NeuroVox.Domain.Entities.KaggleAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EncryptedAiKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EncryptedApiKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("GpuExhaustedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double>("GpuSecondsThisWeek")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime?>("KernelStartedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastConnectAttemptUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("LastHeartbeatUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PublicUrl")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("QuotaWeekStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RegisterTokenHash")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("RowCreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("RowIsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RowIsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("RowUpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("RunningOnGpu")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegisterTokenHash");
+
+                    b.HasIndex("CustomerId", "Username")
+                        .IsUnique();
+
+                    b.ToTable("KaggleAccounts", "neurovox");
+                });
+
             modelBuilder.Entity("NeuroVox.Domain.Entities.Participant", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool?>("AdequateVisionHearing")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ConsentGivenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConsentVersion")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ConsentWithdrawnAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uuid");
 
                     b.Property<DateOnly?>("DateOfBirth")
                         .HasColumnType("date");
+
+                    b.Property<int?>("Diagnosis")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("EligibilityAssessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EligibilityAssessedBy")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("LanguageBarrier")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Notes")
                         .HasColumnType("text");
@@ -323,8 +422,17 @@ namespace NeuroVox.Persistence.Migrations
                     b.Property<DateTime?>("RowUpdatedDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool?>("SevereMentalIllness")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("SevereNeurologicalDeficit")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Sex")
                         .HasColumnType("text");
+
+                    b.Property<bool?>("WillingFollowUp6Months")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 
@@ -351,6 +459,15 @@ namespace NeuroVox.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<DateOnly?>("EthicsApprovalDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("EthicsApprovalNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EthicsCommittee")
                         .HasColumnType("text");
 
                     b.Property<string>("InformationUnitSchemaVersion")
@@ -395,6 +512,15 @@ namespace NeuroVox.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AnalysisError")
+                        .HasColumnType("text");
+
+                    b.Property<int>("AnalysisStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("AnalyzedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("AudioFilePath")
                         .HasColumnType("text");
@@ -617,6 +743,56 @@ namespace NeuroVox.Persistence.Migrations
                     b.HasIndex("RecordingId", "AnnotatorId");
 
                     b.ToTable("TherapistAnnotations", "neurovox");
+                });
+
+            modelBuilder.Entity("NeuroVox.Domain.Entities.TrainingRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ArtifactPath")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReportJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestedBy")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("RowCreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("RowIsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RowIsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("RowUpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SampleCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TrainingRuns", "neurovox");
                 });
 #pragma warning restore 612, 618
         }

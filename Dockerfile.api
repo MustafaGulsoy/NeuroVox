@@ -1,12 +1,21 @@
+# Build context = this repo's root. BaseAuth comes from the private Nexus feed (see nuget.config).
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-COPY NeuroVox/ NeuroVox/
-COPY BaseAuth/ BaseAuth/
-RUN dotnet restore NeuroVox/NeuroVox.WebApi/NeuroVox.WebApi.csproj
-RUN dotnet publish NeuroVox/NeuroVox.WebApi/NeuroVox.WebApi.csproj -c Release -o /app/out
+COPY . .
+RUN dotnet restore NeuroVox.WebApi/NeuroVox.WebApi.csproj
+RUN dotnet publish NeuroVox.WebApi/NeuroVox.WebApi.csproj -c Release -o /app/out --no-restore \
+    && cp NeuroVox.WebApi/appsettings.Example.json /app/out/appsettings.json
+# ^ non-secret defaults (rate limits etc.); real secrets come from environment variables.
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data/audio /data/models /app/logs && chown -R app /data /app/logs
 WORKDIR /app
 COPY --from=build /app/out .
+ENV ASPNETCORE_URLS=http://+:8080 \
+    NeuroVox__AudioStoragePath=/data/audio \
+    NeuroVox__ModelStoragePath=/data/models
+USER app
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD curl -fs http://localhost:8080/health || exit 1
 ENTRYPOINT ["dotnet", "NeuroVox.WebApi.dll"]

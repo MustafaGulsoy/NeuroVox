@@ -371,3 +371,11 @@ appsettings.Production.json
 .env.local
 secrets.json
 /nul
+
+# Secrets / data
+.env
+/data/
+/artifacts/
+__pycache__/
+.pytest_cache/
+.tmp-tests/

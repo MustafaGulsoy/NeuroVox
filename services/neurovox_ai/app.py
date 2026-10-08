@@ -1,19 +1,43 @@
-import io
+import hmac
 import math
 import os
+import shutil
+import tempfile
+import threading
 import time
-import wave
+from pathlib import Path
 from typing import Any
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 
+import stats
 import turkish_nlp
 
 app = FastAPI(title="NeuroVox AI Service", version="0.1.0")
 
+# Only files under AUDIO_ROOT may be analysed; the API sends bare file names.
+AUDIO_ROOT = Path(os.environ.get("NEUROVOX_AUDIO_ROOT", "/data/audio")).resolve()
+API_KEY = os.environ.get("NEUROVOX_AI_API_KEY", "")
+_model_lock = threading.Lock()
+
+
+def require_key(x_api_key: str = Header(default="")):
+    # Fail closed: without a configured key the service refuses analysis/prediction.
+    if not API_KEY or not hmac.compare_digest(x_api_key, API_KEY):
+        raise HTTPException(status_code=401, detail="invalid api key")
+
+
+def resolve_audio(name: str) -> Path:
+    path = (AUDIO_ROOT / Path(name).name).resolve()
+    if AUDIO_ROOT not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="audio file not found")
+    return path
+
 MODEL_SIZE = os.environ.get("NEUROVOX_STT_MODEL", "small")
+DEVICE = os.environ.get("NEUROVOX_DEVICE", "cpu")  # "cuda" on GPU hosts (Kaggle); falls back to cpu if unusable
 ALGORITHM_VERSION = "1.0"
 
 _whisper_model = None
@@ -21,9 +45,18 @@ _whisper_model = None
 
 def get_whisper():
     global _whisper_model
-    if _whisper_model is None:
-        from faster_whisper import WhisperModel
-        _whisper_model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
+    with _model_lock:
+        if _whisper_model is None:
+            from faster_whisper import WhisperModel
+            try:
+                m = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type="float16" if DEVICE == "cuda" else "int8")
+                if DEVICE == "cuda":  # missing cuDNN only shows up at the first transcribe
+                    list(m.transcribe(np.zeros(16000, dtype=np.float32))[0])
+            except Exception:
+                if DEVICE == "cpu":
+                    raise
+                m = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
+            _whisper_model = m
     return _whisper_model
 
 
@@ -141,6 +174,7 @@ def measurement(name: str, value: float | None, text: str | None = None, unit: s
         "feature_name": name,
         "numeric_value": value,
         "text_value": text,
+        "unit": unit,
         "definition_version": ALGORITHM_VERSION,
         "software_version": "neurovox-ai/0.1.0",
         "model_version": MODEL_SIZE,
@@ -148,17 +182,49 @@ def measurement(name: str, value: float | None, text: str | None = None, unit: s
     }
 
 
+_last_work = time.monotonic()
+
+
+@app.middleware("http")
+async def _track_work(request, call_next):
+    global _last_work
+    if request.url.path != "/health":
+        _last_work = time.monotonic()
+    response = await call_next(request)
+    if request.url.path != "/health":
+        _last_work = time.monotonic()
+    return response
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": MODEL_SIZE}
+    # idle_seconds lets a remote host (Kaggle) shut itself down when nobody uses it.
+    return {"status": "ok", "model": MODEL_SIZE, "idle_seconds": int(time.monotonic() - _last_work)}
 
 
-@app.post("/analyze")
+@app.post("/analyze", dependencies=[Depends(require_key)])
 def analyze(req: AnalyzeRequest):
-    if not os.path.isfile(req.audio_path):
-        raise HTTPException(status_code=404, detail=f"Audio file not found: {req.audio_path}")
+    return _analyze(resolve_audio(req.audio_path), req)
 
-    audio = decode_audio_16k(req.audio_path)
+
+# Remote mode (no shared volume): the API uploads the audio bytes instead of a file name.
+@app.post("/analyze-upload", dependencies=[Depends(require_key)])
+def analyze_upload(file: UploadFile = File(...), language: str = Form("tr"), information_units: str | None = Form(None)):
+    import json
+    units = json.loads(information_units) if information_units else None
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audio"
+        with open(path, "wb") as f:
+            while chunk := file.file.read(1 << 20):
+                f.write(chunk)
+        return _analyze(path, AnalyzeRequest(audio_path="upload", language=language, information_units=units))
+
+
+def _analyze(audio_file: Path, req: AnalyzeRequest):
+    try:
+        audio = decode_audio_16k(str(audio_file))
+    except Exception:
+        raise HTTPException(status_code=422, detail="audio could not be decoded")
     total_s = len(audio) / 16000
     vad = vad_pause_stats(audio)
 
@@ -176,6 +242,7 @@ def analyze(req: AnalyzeRequest):
     n_clauses = turkish_nlp.clause_count_approximate(text)
     wacc = word_access_candidates(text, segments)
     info_u = information_unit_metrics(text, req.information_units, lex["total_words"])
+    err_cand = turkish_nlp.error_candidates(text)   # None without a morphological analyzer
 
     measurement_list = [
         measurement("total_words", lex["total_words"], unit="count"),
@@ -208,6 +275,7 @@ def analyze(req: AnalyzeRequest):
         measurement("circumlocution_candidates", wacc["circumlocution_candidates"], unit="count"),
         measurement("information_coverage", info_u["information_coverage"], unit="ratio"),
         measurement("information_density", info_u["information_density"]),
+        *[measurement(k, v, unit="ratio" if k.endswith("_ratio") else "count") for k, v in (err_cand or {}).items()],
         measurement("nlp_backend", 1.0 if turkish_nlp.ZEYREK_AVAILABLE else 0.0, text="zeyrek" if turkish_nlp.ZEYREK_AVAILABLE else "heuristic-fallback"),
     ]
 
@@ -218,6 +286,37 @@ def analyze(req: AnalyzeRequest):
         "speech_duration_seconds": speech_s,
         "measurements": measurement_list,
     }
+
+
+class CompareRequest(BaseModel):
+    features: dict[str, dict[str, list[float | None]]]
+
+
+@app.post("/stats/compare-many", dependencies=[Depends(require_key)])
+def compare_many(req: CompareRequest):
+    if len(req.features) > 500 or sum(len(v) for g in req.features.values() for v in g.values()) > 200_000:
+        raise HTTPException(status_code=413, detail="too many values")
+    return {"results": stats.compare_many(req.features)}
+
+
+# Training runs where the compute is (Kaggle kernel): needs train.py (neurovox_pipeline) next to this file.
+@app.post("/train", dependencies=[Depends(require_key)])
+def train_endpoint(file: UploadFile = File(...)):
+    try:
+        import pandas as pd
+        import train
+    except ImportError:
+        raise HTTPException(status_code=501, detail="training is not available on this host")
+    with tempfile.TemporaryDirectory() as d:
+        csv, out = Path(d) / "in.csv", Path(d) / "art"
+        with open(csv, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        try:
+            train.train_models(pd.read_csv(csv), str(out))
+        except (ValueError, AssertionError) as e:
+            raise HTTPException(status_code=422, detail=str(e)[:300])
+        zipped = shutil.make_archive(str(Path(d) / "art"), "zip", out)
+        return Response(Path(zipped).read_bytes(), media_type="application/zip")
 
 
 _MODEL_CACHE: dict = {}
@@ -244,15 +343,20 @@ def _load_model():
     return model, order
 
 
-@app.post("/predict")
+@app.post("/predict", dependencies=[Depends(require_key)])
 def predict(req: PredictRequest):
     try:
         model, order = _load_model()
     except FileNotFoundError as e:
-        raise HTTPException(status_code=503, detail=f"Model artifact not found: {e.filename}")
-    import numpy as np
+        raise HTTPException(status_code=503, detail="Model artifact not found")
+    if not req.features or not all(math.isfinite(v) for v in req.features.values()):
+        raise HTTPException(status_code=422, detail="features must be finite numbers")
     keys = order if order else sorted(req.features.keys())
-    X = np.array([[req.features.get(k, 0.0) for k in keys]])
+    present = sum(1 for k in keys if k in req.features)
+    if present < max(1, (len(keys) + 1) // 2):
+        raise HTTPException(status_code=422, detail=f"only {present}/{len(keys)} model features supplied")
+    # Missing values go in as NaN: the pipeline's imputer (fitted on training data) fills them, never a made-up 0.
+    X = np.array([[req.features.get(k, np.nan) for k in keys]], dtype=float)
     proba = None
     try:
         proba = float(model.predict_proba(X)[0][1])

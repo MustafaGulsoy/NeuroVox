@@ -1,0 +1,31 @@
+import { inject } from '@angular/core';
+import { CanActivateFn, Router, Routes } from '@angular/router';
+import { AuthService } from './core/auth.service';
+
+const authGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  return auth.isLoggedIn() ? true : inject(Router).createUrlTree(['/login']);
+};
+const guestGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  return auth.isLoggedIn() ? inject(Router).createUrlTree(['/']) : true;
+};
+
+export const routes: Routes = [
+  { path: 'login', canActivate: [guestGuard], loadComponent: () => import('./pages/login').then(m => m.LoginPage) },
+  {
+    path: '', canActivate: [authGuard], loadComponent: () => import('./pages/shell').then(m => m.Shell),
+    children: [
+      { path: '', pathMatch: 'full', loadComponent: () => import('./pages/dashboard').then(m => m.DashboardPage), title: 'Genel Bakış · NeuroVox' },
+      { path: 'participants', loadComponent: () => import('./pages/participants').then(m => m.ParticipantsPage), title: 'Katılımcılar · NeuroVox' },
+      { path: 'participants/:id', loadComponent: () => import('./pages/participant-detail').then(m => m.ParticipantDetailPage), title: 'Katılımcı · NeuroVox' },
+      { path: 'recordings', loadComponent: () => import('./pages/recordings').then(m => m.RecordingsPage), title: 'Kayıtlar · NeuroVox' },
+      { path: 'annotate/:id', loadComponent: () => import('./pages/annotate').then(m => m.AnnotatePage), title: 'Anotasyon · NeuroVox' },
+      { path: 'analysis', loadComponent: () => import('./pages/analysis').then(m => m.AnalysisPage), title: 'Analiz · NeuroVox' },
+      { path: 'research', loadComponent: () => import('./pages/research').then(m => m.ResearchPage), title: 'Araştırma · NeuroVox' },
+      { path: 'kaggle', loadComponent: () => import('./pages/kaggle').then(m => m.KaggleAccountsPage), title: 'Kaggle · NeuroVox' },
+      { path: 'users', loadComponent: () => import('./pages/users').then(m => m.UsersPage), title: 'Kullanıcılar · NeuroVox' }
+    ]
+  },
+  { path: '**', redirectTo: '' }
+];

@@ -1,9 +1,17 @@
 """NeuroVox training pipeline.
 
 Leakage rules enforced here:
-- A participant's visits are never split between train and test (GroupShuffleSplit).
-- Imputation/scaling/feature selection are fitted inside a sklearn Pipeline on
-  TRAIN data only (Pipeline handles this; never fit on the full dataset first).
+- A participant's visits are never split between train and test (StratifiedGroupKFold on participant_code).
+- Imputation/scaling are fitted inside a sklearn Pipeline on the TRAIN folds only.
+- Reported metrics come from out-of-fold predictions of a grouped, stratified k-fold -- with ~50 participants a single
+  80/20 split is too noisy -- plus a participant-level bootstrap 95% CI for the AUC.
+
+Feature sets (so the contribution of speech can be judged against cognition, as the study plan asks):
+  speech    = automatic speech/language measurements
+  cognitive = ACE-III scores (columns starting with "ace_")
+  combined  = both
+Artifacts (<model>.joblib, feature_order.json) are written for the primary set: combined when ACE columns exist,
+otherwise speech.
 """
 
 import argparse
@@ -11,18 +19,21 @@ import json
 import os
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
-from sklearn.metrics import (accuracy_score, f1_score, roc_auc_score)
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
+from sklearn.model_selection import StratifiedGroupKFold, cross_val_predict
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 TARGET_COLUMN = "outcome_label"
 GROUP_COLUMN = "participant_code"
+META_COLUMNS = [TARGET_COLUMN, GROUP_COLUMN, "visit_id", "visit_type"]
+BOOTSTRAPS = 500
 
 MODELS = {
     "logistic_regression": LogisticRegression(max_iter=2000, class_weight="balanced"),
@@ -42,61 +53,99 @@ def build_pipeline(model) -> Pipeline:
     ])
 
 
+def auc_ci(y, proba, groups, seed=42):
+    """95% CI of the AUC, resampling PARTICIPANTS (visits of one person are correlated)."""
+    rng = np.random.default_rng(seed)
+    by_group = {g: np.flatnonzero(groups == g) for g in np.unique(groups)}
+    keys = list(by_group)
+    vals = []
+    for _ in range(BOOTSTRAPS):
+        idx = np.concatenate([by_group[k] for k in rng.choice(keys, len(keys))])
+        if len(set(y[idx])) == 2:
+            vals.append(roc_auc_score(y[idx], proba[idx]))
+    return [round(float(np.percentile(vals, 2.5)), 4), round(float(np.percentile(vals, 97.5)), 4)] if len(vals) >= 50 else None
+
+
+def metrics(y, proba, groups) -> dict:
+    pred = (proba >= 0.5).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y, pred, labels=[0, 1]).ravel()
+    return {
+        "accuracy": round(accuracy_score(y, pred), 4),
+        "f1": round(f1_score(y, pred, average="weighted"), 4),
+        "roc_auc": round(roc_auc_score(y, proba), 4),
+        "roc_auc_ci95": auc_ci(y, proba, groups),
+        "sensitivity": round(tp / (tp + fn), 4) if tp + fn else None,   # converters detected
+        "specificity": round(tn / (tn + fp), 4) if tn + fp else None,   # stable MCI kept stable
+        "confusion": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
+    }
+
+
+def train_models(df: pd.DataFrame, out: str, folds: int = 5) -> dict:
+    """Cross-validates every model on every feature set, writes artifacts to `out`, returns the report dict."""
+    if GROUP_COLUMN not in df.columns or TARGET_COLUMN not in df.columns:
+        raise ValueError(f"CSV must contain '{GROUP_COLUMN}' and '{TARGET_COLUMN}' columns")
+    df = df.dropna(subset=[TARGET_COLUMN, GROUP_COLUMN]).reset_index(drop=True)
+    y = df[TARGET_COLUMN].astype(int).to_numpy()
+    groups = df[GROUP_COLUMN].astype(str).to_numpy()
+    if set(y) != {0, 1}:
+        raise ValueError("outcome_label must contain both classes 0 and 1")
+
+    per_class_participants = min(len(set(groups[y == 0])), len(set(groups[y == 1])))
+    k = min(folds, per_class_participants)
+    if k < 2:
+        raise ValueError(f"each class needs at least 2 participants (smallest class has {per_class_participants})")
+
+    X_all = df.drop(columns=META_COLUMNS, errors="ignore").select_dtypes(include="number")
+    ace = [c for c in X_all.columns if c.startswith("ace_")]
+    speech = [c for c in X_all.columns if not c.startswith("ace_")]
+    sets = {"speech": speech, "cognitive": ace, "combined": speech + ace if speech and ace else []}
+    sets = {name: cols for name, cols in sets.items() if cols}
+    primary = "combined" if ace and speech else ("speech" if speech else "cognitive")
+
+    os.makedirs(out, exist_ok=True)
+    cv = StratifiedGroupKFold(n_splits=k, shuffle=True, random_state=42)
+    report_sets = {}
+    for set_name, cols in sets.items():
+        X = X_all[cols]
+        res = {}
+        for name, model in MODELS.items():
+            pipe = build_pipeline(model)
+            proba = cross_val_predict(pipe, X, y, groups=groups, cv=cv, method="predict_proba")[:, 1]
+            res[name] = metrics(y, proba, groups)
+            if set_name == primary:
+                joblib.dump(build_pipeline(model).fit(X, y), os.path.join(out, f"{name}.joblib"))
+        report_sets[set_name] = {"features": cols, "models": res}
+
+    with open(os.path.join(out, "feature_order.json"), "w", encoding="utf-8") as f:
+        json.dump(sets[primary], f, ensure_ascii=False, indent=2)
+
+    full = {
+        "n_rows": int(len(df)),
+        "n_participants": int(len(set(groups))),
+        "class_counts": {"0": int((y == 0).sum()), "1": int((y == 1).sum())},
+        "folds": k,
+        "primary_set": primary,
+        "models": report_sets[primary]["models"],
+        "feature_sets": report_sets,
+        "note": "Exploratory research model; metrics are out-of-fold (participants never shared between train and test). "
+                "Results are associated with the outcome; they do not imply causation and are not a diagnosis.",
+    }
+    with open(os.path.join(out, "report.json"), "w", encoding="utf-8") as f:
+        json.dump(full, f, ensure_ascii=False, indent=2)
+    return full
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--features", required=True, help="CSV with participant_code, outcome_label, numeric features")
     ap.add_argument("--out", default="artifacts")
-    ap.add_argument("--test-size", type=float, default=0.2)
+    ap.add_argument("--folds", type=int, default=5)
     args = ap.parse_args()
-
-    df = pd.read_csv(args.features)
-    if GROUP_COLUMN not in df.columns or TARGET_COLUMN not in df.columns:
-        raise SystemExit(f"CSV must contain '{GROUP_COLUMN}' and '{TARGET_COLUMN}' columns")
-
-    os.makedirs(args.out, exist_ok=True)
-    y = df[TARGET_COLUMN]
-    groups = df[GROUP_COLUMN]
-    X = df.drop(columns=[TARGET_COLUMN, GROUP_COLUMN, "visit_id", "visit_type"], errors="ignore")
-    X = X.select_dtypes(include="number")
-
-    splitter = GroupShuffleSplit(n_splits=1, test_size=args.test_size, random_state=42)
-    train_idx, test_idx = next(splitter.split(X, y, groups))
-
-    assert set(groups.iloc[train_idx]).isdisjoint(set(groups.iloc[test_idx])), "Group leakage detected"
-
-    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-
-    report = {}
-    for name, model in MODELS.items():
-        pipe = build_pipeline(model)
-        pipe.fit(X_train, y_train)
-        preds = pipe.predict(X_test)
-        entry = {
-            "accuracy": round(accuracy_score(y_test, preds), 4),
-            "f1": round(f1_score(y_test, preds, average="weighted"), 4),
-        }
-        try:
-            proba = pipe.predict_proba(X_test)[:, 1] if len(set(y_test)) == 2 else None
-            if proba is not None:
-                entry["roc_auc"] = round(roc_auc_score(y_test, proba), 4)
-        except Exception:
-            pass
-        report[name] = entry
-        joblib.dump(pipe, os.path.join(args.out, f"{name}.joblib"))
-
-    with open(os.path.join(args.out, "feature_order.json"), "w", encoding="utf-8") as f:
-        json.dump(list(X.columns), f, ensure_ascii=False, indent=2)
-
-    with open(os.path.join(args.out, "report.json"), "w", encoding="utf-8") as f:
-        json.dump({
-            "n_train": int(len(train_idx)),
-            "n_test": int(len(test_idx)),
-            "models": report,
-            "note": "Exploratory research model. Results are associated with the outcome; they do not imply causation.",
-        }, f, ensure_ascii=False, indent=2)
-
-    print(json.dumps(report, indent=2))
+    try:
+        full = train_models(pd.read_csv(args.features), args.out, args.folds)
+    except ValueError as e:
+        raise SystemExit(str(e))
+    print(json.dumps(full["models"], indent=2))
 
 
 if __name__ == "__main__":

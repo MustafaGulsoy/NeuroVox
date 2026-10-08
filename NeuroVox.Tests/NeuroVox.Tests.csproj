@@ -21,6 +21,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Moq" />
+    <ProjectReference Include="..\NeuroVox.WebApi\NeuroVox.WebApi.csproj" />
+    <ProjectReference Include="..\NeuroVox.Persistence\NeuroVox.Persistence.csproj" />
     <ProjectReference Include="..\NeuroVox.Application\NeuroVox.Application.csproj" />
     <ProjectReference Include="..\NeuroVox.Domain\NeuroVox.Domain.csproj" />
   </ItemGroup>

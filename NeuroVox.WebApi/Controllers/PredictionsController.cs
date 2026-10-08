@@ -25,6 +25,8 @@ namespace NeuroVox.WebApi.Controllers
         
         public async Task<IActionResult> Predict([FromBody] PredictRequest request)
         {
+            if (request.Features.Count is 0 or > 500 || request.Features.Values.Any(v => double.IsNaN(v) || double.IsInfinity(v)))
+                return BadRequest(new { title = "features must be 1-500 finite numbers" });
             var result = await _client.PredictAsync(request.Features);
             if (result is null) return StatusCode(503, new { title = "Model unavailable or not yet trained" });
             return Ok(result);

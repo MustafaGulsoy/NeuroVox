@@ -16,6 +16,10 @@ namespace NeuroVox.Domain.Entities
         public string CodingManualVersion { get; set; } = string.Empty;
         public string? InformationUnitSchemaVersion { get; set; }
         public bool IsBlindedAnnotationEnabled { get; set; } = true;
+        // Ethics committee approval; recordings are refused for a protocol without it (NeuroVox:RequireEthicsApproval).
+        public string? EthicsCommittee { get; set; }
+        public string? EthicsApprovalNumber { get; set; }
+        public DateOnly? EthicsApprovalDate { get; set; }
         public ReferenceStandard DefaultReferenceStandard { get; set; } = ReferenceStandard.TherapistAnnotation;
     }
 }

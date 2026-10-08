@@ -79,3 +79,21 @@ namespace NeuroVox.Domain.Enums
         Excellent = 4
     }
 }
+
+namespace NeuroVox.Domain.Enums
+{
+    public enum AnalysisStatus
+    {
+        None = 0,
+        Queued = 1,
+        Running = 2,
+        Completed = 3,
+        Failed = 4
+    }
+
+    public enum BaselineDiagnosis
+    {
+        MCI = 0,
+        MildAlzheimer = 1
+    }
+}

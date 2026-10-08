@@ -4,6 +4,7 @@ using BaseAuth.Application.CustomAttributes;
 using BaseAuth.Domain.Enums;
 using NeuroVox.Application.Repositories.AceAssessments;
 using NeuroVox.Application.Repositories.ClinicalOutcomes;
+using NeuroVox.Application.Repositories.Participants;
 using NeuroVox.Domain.Entities;
 using NeuroVox.Domain.Enums;
 
@@ -16,11 +17,13 @@ namespace NeuroVox.WebApi.Controllers
     {
         private readonly IAceAssessmentReadRepository _read;
         private readonly IAceAssessmentWriteRepository _write;
+        private readonly IParticipantReadRepository _participants;
 
-        public AceAssessmentsController(IAceAssessmentReadRepository read, IAceAssessmentWriteRepository write)
+        public AceAssessmentsController(IAceAssessmentReadRepository read, IAceAssessmentWriteRepository write, IParticipantReadRepository participants)
         {
             _read = read;
             _write = write;
+            _participants = participants;
         }
 
         public class CreateRequest
@@ -47,6 +50,10 @@ namespace NeuroVox.WebApi.Controllers
         {
             if (HttpContext.Items.TryGetValue("customerid", out var cid) && cid is Guid customerId)
             {
+                if (!_participants.GetWhere(p => p.Id == request.ParticipantId && !p.RowIsDeleted, tracking: false).Any())
+                    return BadRequest(new { title = "participant not found" });
+                if (request.TotalScore is < 0 or > 100)
+                    return BadRequest(new { title = "totalScore must be 0-100" });
                 var entity = new AceAssessment
                 {
                     Id = Guid.NewGuid(),
@@ -86,11 +93,13 @@ namespace NeuroVox.WebApi.Controllers
     {
         private readonly IClinicalOutcomeReadRepository _read;
         private readonly IClinicalOutcomeWriteRepository _write;
+        private readonly IParticipantReadRepository _participants;
 
-        public ClinicalOutcomesController(IClinicalOutcomeReadRepository read, IClinicalOutcomeWriteRepository write)
+        public ClinicalOutcomesController(IClinicalOutcomeReadRepository read, IClinicalOutcomeWriteRepository write, IParticipantReadRepository participants)
         {
             _read = read;
             _write = write;
+            _participants = participants;
         }
 
         public class CreateRequest
@@ -110,6 +119,8 @@ namespace NeuroVox.WebApi.Controllers
         {
             if (HttpContext.Items.TryGetValue("customerid", out var cid) && cid is Guid customerId)
             {
+                if (!_participants.GetWhere(p => p.Id == request.ParticipantId && !p.RowIsDeleted, tracking: false).Any())
+                    return BadRequest(new { title = "participant not found" });
                 var entity = new ClinicalOutcome
                 {
                     Id = Guid.NewGuid(),

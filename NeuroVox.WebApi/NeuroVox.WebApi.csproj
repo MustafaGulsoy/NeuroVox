@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="BaseAuth.Library" />
     <PackageReference Include="MediatR" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Serilog" />
@@ -29,7 +30,14 @@
     <ProjectReference Include="..\NeuroVox.Persistence\NeuroVox.Persistence.csproj" />
     <ProjectReference Include="..\NeuroVox.Application\NeuroVox.Application.csproj" />
     <ProjectReference Include="..\NeuroVox.Infrastructure\NeuroVox.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\BaseAuth\BaseAuth.Library\BaseAuth.Library.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\services\neurovox_ai\app.py" LogicalName="ai/app.py" />
+    <EmbeddedResource Include="..\services\neurovox_ai\turkish_nlp.py" LogicalName="ai/turkish_nlp.py" />
+    <EmbeddedResource Include="..\services\neurovox_ai\stats.py" LogicalName="ai/stats.py" />
+    <EmbeddedResource Include="..\services\neurovox_pipeline\train.py" LogicalName="ai/train.py" />
+    <EmbeddedResource Include="Services\kernel_template.py" LogicalName="ai/kernel_template.py" />
   </ItemGroup>
 
   <ItemGroup>

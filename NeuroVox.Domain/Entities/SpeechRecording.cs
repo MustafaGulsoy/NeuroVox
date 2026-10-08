@@ -20,5 +20,8 @@ namespace NeuroVox.Domain.Entities
         public string? TranscriptText { get; set; }
         public string? TranscriptSource { get; set; }
         public string? TranscriberVersion { get; set; }
+        public AnalysisStatus AnalysisStatus { get; set; } = AnalysisStatus.None;
+        public string? AnalysisError { get; set; }
+        public DateTime? AnalyzedAt { get; set; }
     }
 }

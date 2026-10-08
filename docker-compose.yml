@@ -1,38 +1,82 @@
+# Single API (identity endpoints are part of it); BaseAuth.Library comes from the Nexus feed (nuget.config).
+# Copy .env.example to .env and fill every value; compose refuses to start with missing secrets.
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: NeuroVoxDb
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d NeuroVoxDb"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
 
   api:
     build:
-      context: ..
-      dockerfile: NeuroVox/Dockerfile.api
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
     environment:
-      NeuroVox__ConnectionString: "Host=postgres;Port=5432;Database=NeuroVoxDb;Username=user;Password=pass"
-      NeuroVox__AiBaseUrl: "http://ai:8000/"
-      ASPNETCORE_URLS: "http://+:8080"
-    ports:
-      - "8080:8080"
+      ASPNETCORE_ENVIRONMENT: Production
+      NeuroVox__ConnectionString: "Host=postgres;Port=5432;Database=NeuroVoxDb;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      NeuroVox__AiBaseUrl: ${AI_BASE_URL:-http://ai:8000/}
+      NeuroVox__SecretKey: ${NEUROVOX_SECRET_KEY:?openssl rand -base64 32}   # encrypts stored Kaggle tokens (AES-256-GCM)
+      NeuroVox__PublicApiUrl: ${PUBLIC_API_URL:?public https URL of this API, used by Kaggle kernels to report back}
+      NeuroVox__AiUpload: ${AI_UPLOAD:-false}   # true = send audio bytes to a remote AI host (Kaggle)
+      NeuroVox__AiApiKey: ${AI_API_KEY:?set in .env}
+      Auth__ConnectionString: "Host=postgres;Port=5432;Database=NeuroVoxDb;Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+      Auth__Token__SecurityKey: ${JWT_SECURITY_KEY:?min 32 chars}
+      Auth__Token__Issuer: ${JWT_ISSUER:?set in .env}
+      Auth__Token__Audience: ${JWT_AUDIENCE:?set in .env}
+      CORS__AllowedOrigins: ${CORS_ALLOWED_ORIGINS:?set in .env}
     volumes:
-      - ./data/audio:/data/audio
+      - audio:/data/audio
+      - models:/data/models
     depends_on:
-      - postgres
-      - ai
+      postgres: { condition: service_healthy }
+    networks: [internal, public]
+    ports:
+      - "127.0.0.1:8080:8080"   # put a TLS reverse proxy in front (api.<domain> and <domain>/api/)
+
+  web:
+    build:
+      context: frontend
+    restart: unless-stopped
+    environment:
+      CUSTOMER_ID: ${CUSTOMER_ID:?tenant GUID, see README}
+    depends_on: [api]
+    networks: [public]
+    ports:
+      - "127.0.0.1:8081:8080"   # SPA; the reverse proxy sends /api/ to the api service
 
   ai:
+    profiles: [localai]   # `docker compose --profile localai up -d`; skip it when AI_BASE_URL points at Kaggle
     build:
       context: services/neurovox_ai
-    ports:
-      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      NEUROVOX_AI_API_KEY: ${AI_API_KEY:?set in .env}
+      NEUROVOX_STT_MODEL: ${STT_MODEL:-small}
+      NEUROVOX_MODEL_DIR: /models/current
     volumes:
-      - ./data/audio:/data/audio
+      - audio:/data/audio:ro
+      - models:/models:ro            # `current/` is written by the API after a training run
+      - hfcache:/cache/hf
+    networks: [internal]            # not published: only the API talks to it
 
 volumes:
   pgdata:
+  audio:
+  models:
+  hfcache:
+
+networks:
+  internal:
+    internal: true
+  public:

@@ -12,7 +12,8 @@ namespace NeuroVox.WebApi.Middlewares
         public async Task InvokeAsync(HttpContext context)
         {
             var path = context.Request.Path.Value ?? string.Empty;
-            if (ExemptPaths.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            // Only the API needs the tenant header; static pages (labeling UI) are loaded by plain browser navigation.
+            if (!path.StartsWith("/api", StringComparison.OrdinalIgnoreCase) || ExemptPaths.Any(p => path.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
             {
                 await _next(context);
                 return;
