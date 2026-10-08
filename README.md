@@ -99,7 +99,7 @@ Export yalnızca aktif onamı olan katılımcıları ve `ConversionToAD` / `Stab
 
 | Plan item | Where |
 |---|---|
-| Inclusion/exclusion criteria | Participant detail > Uygunluk (`PUT /api/Participants/{id}/eligibility`); uploads are refused unless eligible (`NeuroVox:RequireEligibility`) |
+| Inclusion/exclusion criteria | Participant detail > Uygunluk (`PUT /api/Participants/{id}/eligibility`); optional; set `NeuroVox:RequireEligibility=true` to refuse uploads unless eligible |
 | Ethics approval | Research > protocol > Etik kurul onayı (`PUT /api/ResearchProtocols/{id}/ethics`); optional; set `NeuroVox:RequireEthicsApproval=true` to refuse uploads without it |
 | Speech rate, TTR/MATTR, pauses, POS ratios | AI service `/analyze` |
 | Language-error candidates (unanalysable words, verbless sentences, fillers, self-corrections) | `turkish_nlp.error_candidates`; semantic/grammar judgement stays with blind human raters |

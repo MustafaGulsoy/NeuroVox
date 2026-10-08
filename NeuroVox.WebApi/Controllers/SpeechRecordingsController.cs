@@ -82,7 +82,7 @@ namespace NeuroVox.WebApi.Controllers
             if (participant?.ConsentGivenAt is null || participant.ConsentWithdrawnAt is not null)
                 return StatusCode(StatusCodes.Status409Conflict, new { title = "participant has no active consent" });
             // Study gates (protocol): eligibility must be assessed and met, and the protocol needs an ethics approval number.
-            if (_config.GetValue("NeuroVox:RequireEligibility", true) && participant.IsEligible != true)
+            if (_config.GetValue("NeuroVox:RequireEligibility", false) && participant.IsEligible != true)
                 return StatusCode(StatusCodes.Status409Conflict, new { title = participant.IsEligible is null
                     ? "participant eligibility has not been assessed" : "participant does not meet the inclusion/exclusion criteria" });
             if (_config.GetValue("NeuroVox:RequireEthicsApproval", false)
