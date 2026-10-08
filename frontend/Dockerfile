@@ -14,5 +14,5 @@ COPY docker-entrypoint.sh /docker-entrypoint-neurovox.sh
 RUN chmod +x /docker-entrypoint-neurovox.sh && chown -R 101:101 /usr/share/nginx/html
 USER 101
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:8080/health || exit 1
 ENTRYPOINT ["/docker-entrypoint-neurovox.sh"]
