@@ -11,6 +11,12 @@ const guestGuard: CanActivateFn = () => {
   return auth.isLoggedIn() ? inject(Router).createUrlTree(['/']) : true;
 };
 
+// UI-side convenience only: the API enforces the same rules on every call.
+const adminGuard = (kind: 'system' | 'institution'): CanActivateFn => () => {
+  const auth = inject(AuthService);
+  return (kind === 'system' ? auth.isSystemAdmin() : auth.isInstitutionAdmin()) ? true : inject(Router).createUrlTree(['/']);
+};
+
 export const routes: Routes = [
   { path: 'login', canActivate: [guestGuard], loadComponent: () => import('./pages/login').then(m => m.LoginPage) },
   {
@@ -23,8 +29,9 @@ export const routes: Routes = [
       { path: 'annotate/:id', loadComponent: () => import('./pages/annotate').then(m => m.AnnotatePage), title: 'Anotasyon · NeuroVox' },
       { path: 'analysis', loadComponent: () => import('./pages/analysis').then(m => m.AnalysisPage), title: 'Analiz · NeuroVox' },
       { path: 'research', loadComponent: () => import('./pages/research').then(m => m.ResearchPage), title: 'Araştırma · NeuroVox' },
-      { path: 'kaggle', loadComponent: () => import('./pages/kaggle').then(m => m.KaggleAccountsPage), title: 'Kaggle · NeuroVox' },
-      { path: 'users', loadComponent: () => import('./pages/users').then(m => m.UsersPage), title: 'Kullanıcılar · NeuroVox' }
+      { path: 'kaggle', canActivate: [adminGuard('system')], loadComponent: () => import('./pages/kaggle').then(m => m.KaggleAccountsPage), title: 'Kaggle · NeuroVox' },
+      { path: 'institutions', canActivate: [adminGuard('system')], loadComponent: () => import('./pages/institutions').then(m => m.InstitutionsPage), title: 'Kurumlar · NeuroVox' },
+      { path: 'users', canActivate: [adminGuard('institution')], loadComponent: () => import('./pages/users').then(m => m.UsersPage), title: 'Kullanıcılar · NeuroVox' }
     ]
   },
   { path: '**', redirectTo: '' }

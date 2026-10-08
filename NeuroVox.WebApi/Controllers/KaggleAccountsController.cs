@@ -16,7 +16,7 @@ namespace NeuroVox.WebApi.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize]
-    public class KaggleAccountsController(NeuroVoxDbContext db, SecretProtector protector, IKaggleClient kaggle, AiHostPool pool, IConfiguration config) : ControllerBase
+    public class KaggleAccountsController(NeuroVoxDbContext db, SecretProtector protector, IKaggleClient kaggle, AiHostPool pool, IConfiguration config, SystemAccess system) : ControllerBase
     {
         public class AddRequest
         {
@@ -24,7 +24,11 @@ namespace NeuroVox.WebApi.Controllers
             [Required, StringLength(512, MinimumLength = 10)] public string ApiKey { get; set; } = string.Empty;
         }
 
-        private bool IsSystemAdmin => User.IsInRole(config["NeuroVox:SystemAdminRole"] ?? "NeuroVoxAdmin");
+        public class EnabledRequest { public bool Enabled { get; set; } }
+        public class ScheduleRequest { public DateTime? ResumeAtUtc { get; set; } }
+
+        // The system role inside the system institution -- not any role that happens to share the name.
+        private Task<bool> IsSystemAdmin() => system.IsSystemAdminAsync(User);
 
         private object View(KaggleAccount a) => new
         {
@@ -33,7 +37,11 @@ namespace NeuroVox.WebApi.Controllers
             GpuHoursUsed = Math.Round(a.GpuSecondsThisWeek / 3600, 1),
             GpuHoursLimit = Math.Round(pool.WeeklyGpuSeconds / 3600, 1),
             GpuExhausted = a.GpuExhaustedUntilUtc > DateTime.UtcNow,
-            Status = AiHostPool.IsOnline(a) ? "online"
+            a.Enabled, a.ResumeAtUtc, a.KernelVersion,
+            UpToDate = a.KernelVersion == AiHostPool.CurrentVersion,
+            Status = !a.Enabled ? "disabled"
+                : a.ResumeAtUtc > DateTime.UtcNow ? "scheduled"
+                : AiHostPool.IsOnline(a) ? "online"
                 : a.LastError is not null ? "error"
                 : a.LastConnectAttemptUtc is { } t && DateTime.UtcNow - t < TimeSpan.FromMinutes(15) ? "starting"
                 : "offline"
@@ -43,10 +51,10 @@ namespace NeuroVox.WebApi.Controllers
         [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Get KaggleAccounts", ActionType = ActionType.Reading)]
         public async Task<IActionResult> GetAll()
         {
-            if (!IsSystemAdmin) return Forbid();
+            if (!await IsSystemAdmin()) return Forbid();
             var list = await db.KaggleAccounts.AsNoTracking().OrderBy(a => a.Username).ToListAsync();
-            var queued = await db.SpeechRecordings.CountAsync(r => !r.RowIsDeleted && (r.AnalysisStatus == AnalysisStatus.Queued || r.AnalysisStatus == AnalysisStatus.Running));
-            var training = await db.TrainingRuns.CountAsync(r => !r.RowIsDeleted && (r.Status == AnalysisStatus.Queued || r.Status == AnalysisStatus.Running));
+            var queued = await db.SpeechRecordings.IgnoreQueryFilters().CountAsync(r => !r.RowIsDeleted && (r.AnalysisStatus == AnalysisStatus.Queued || r.AnalysisStatus == AnalysisStatus.Running));
+            var training = await db.TrainingRuns.IgnoreQueryFilters().CountAsync(r => !r.RowIsDeleted && (r.Status == AnalysisStatus.Queued || r.Status == AnalysisStatus.Running));
             return Ok(new
             {
                 secretsEnabled = protector.Enabled,
@@ -61,7 +69,7 @@ namespace NeuroVox.WebApi.Controllers
         [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Get KaggleAccounts", ActionType = ActionType.Reading)]
         public async Task<IActionResult> Log(Guid id, CancellationToken ct)
         {
-            if (!IsSystemAdmin) return Forbid();
+            if (!await IsSystemAdmin()) return Forbid();
             var a = await db.KaggleAccounts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
             if (a is null) return NotFound();
             var log = await kaggle.GetLogAsync(a.Username, protector.Unprotect(a.EncryptedApiKey, "kaggle:" + a.Id), AiHostPool.KernelSlug, 4000, ct);
@@ -72,7 +80,7 @@ namespace NeuroVox.WebApi.Controllers
         [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Post KaggleAccounts", ActionType = ActionType.Writing)]
         public async Task<IActionResult> Add([FromBody] AddRequest r, CancellationToken ct)
         {
-            if (!IsSystemAdmin) return Forbid();
+            if (!await IsSystemAdmin()) return Forbid();
             if (!protector.Enabled) return StatusCode(503, new { title = "NeuroVox:SecretKey is not configured; secrets cannot be stored" });
             if (HttpContext.Items["customerid"] is not Guid customerId) return BadRequest(new { title = "customerid missing" });
             var username = r.Username.Trim();
@@ -97,18 +105,59 @@ namespace NeuroVox.WebApi.Controllers
         [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Connect KaggleAccounts", ActionType = ActionType.Updating)]
         public async Task<IActionResult> Connect(Guid id, CancellationToken ct)
         {
-            if (!IsSystemAdmin) return Forbid();
+            if (!await IsSystemAdmin()) return Forbid();
             if (!await db.KaggleAccounts.AnyAsync(a => a.Id == id, ct)) return NotFound();
             var acc = await db.KaggleAccounts.FirstAsync(a => a.Id == id, ct);
             var err = await pool.ConnectAsync(id, pool.ShouldUseGpu(acc), ct);
             return err is null ? Accepted() : StatusCode(502, new { title = err });
         }
 
+        // Master switch: a disabled account is never started, and a running kernel is shut down.
+        [HttpPut("{id:guid}/enabled")]
+        [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Update KaggleAccounts", ActionType = ActionType.Updating)]
+        public async Task<IActionResult> SetEnabled(Guid id, [FromBody] EnabledRequest r, CancellationToken ct)
+        {
+            if (!await IsSystemAdmin()) return Forbid();
+            var a = await db.KaggleAccounts.FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (a is null) return NotFound();
+            a.Enabled = r.Enabled;
+            if (!r.Enabled) AiHostPool.Stop(a);
+            await db.SaveChangesAsync(ct);
+            return Ok(new { });
+        }
+
+        // Scheduled start: nothing runs on this account until the given time (null = no schedule). A running kernel is shut down.
+        [HttpPut("{id:guid}/schedule")]
+        [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Update KaggleAccounts", ActionType = ActionType.Updating)]
+        public async Task<IActionResult> Schedule(Guid id, [FromBody] ScheduleRequest r, CancellationToken ct)
+        {
+            if (!await IsSystemAdmin()) return Forbid();
+            var a = await db.KaggleAccounts.FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (a is null) return NotFound();
+            a.ResumeAtUtc = r.ResumeAtUtc is { } t && t.ToUniversalTime() > DateTime.UtcNow ? t.ToUniversalTime() : null;
+            if (a.ResumeAtUtc is not null) AiHostPool.Stop(a);
+            await db.SaveChangesAsync(ct);
+            return Ok(new { });
+        }
+
+        // Shuts the kernel down now; the keeper starts it again when it is next needed (unless disabled or scheduled).
+        [HttpPost("{id:guid}/stop")]
+        [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Connect KaggleAccounts", ActionType = ActionType.Updating)]
+        public async Task<IActionResult> Stop(Guid id, CancellationToken ct)
+        {
+            if (!await IsSystemAdmin()) return Forbid();
+            var a = await db.KaggleAccounts.FirstOrDefaultAsync(x => x.Id == id, ct);
+            if (a is null) return NotFound();
+            AiHostPool.Stop(a);
+            await db.SaveChangesAsync(ct);
+            return Accepted();
+        }
+
         [HttpDelete("{id:guid}")]
         [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Delete KaggleAccounts", ActionType = ActionType.Deleting)]
         public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
         {
-            if (!IsSystemAdmin) return Forbid();
+            if (!await IsSystemAdmin()) return Forbid();
             // Hard delete: the encrypted secrets must not linger. A running kernel's next heartbeat is rejected and it shuts down.
             var a = await db.KaggleAccounts.FirstOrDefaultAsync(x => x.Id == id, ct);
             if (a is null) return NotFound();
@@ -124,7 +173,7 @@ namespace NeuroVox.WebApi.Controllers
     [AllowAnonymous]
     public class AiHostsController(NeuroVoxDbContext db) : ControllerBase
     {
-        public class RegisterRequest { [Required] public string Url { get; set; } = string.Empty; public bool Gpu { get; set; } }
+        public class RegisterRequest { [Required] public string Url { get; set; } = string.Empty; public bool Gpu { get; set; } public string? Version { get; set; } }
 
         // Only Cloudflare quick-tunnel hosts are accepted, so a leaked token cannot point audio at an arbitrary server.
         private static readonly Regex Tunnel = new(@"^https://[a-z0-9-]+\.trycloudflare\.com/?$", RegexOptions.Compiled);
@@ -141,6 +190,7 @@ namespace NeuroVox.WebApi.Controllers
             // GPU quota bookkeeping: sum the time between heartbeats (capped, so a gap is not billed).
             if (a.LastHeartbeatUtc is { } prev && a.RunningOnGpu) a.GpuSecondsThisWeek += Math.Min((now - prev).TotalSeconds, 120);
             a.RunningOnGpu = r.Gpu;
+            a.KernelVersion = r.Version is { Length: <= 32 } v ? v : null;
             a.KernelStartedUtc ??= now;
             a.PublicUrl = r.Url.TrimEnd('/');
             a.LastHeartbeatUtc = now;

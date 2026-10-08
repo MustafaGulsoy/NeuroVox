@@ -1,8 +1,9 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { ConfigService } from '../core/config.service';
+import { PublicInstitution } from '../core/models';
 import { messageOf } from '../core/toast.service';
 import { IconComponent } from '../shared/icon.component';
 
@@ -28,6 +29,13 @@ import { IconComponent } from '../shared/icon.component';
             <h2>Giriş yap</h2>
             <p class="muted">Hesabınızla devam edin.</p>
           </div>
+          @if (institutions().length > 1) {
+            <label class="field">Kurum
+              <select class="input" name="t" [ngModel]="auth.tenantId()" (ngModelChange)="auth.chooseTenant($event)">
+                @for (i of institutions(); track i.id) { <option [value]="i.id">{{ i.name }}</option> }
+              </select>
+            </label>
+          }
           <label class="field">Kullanıcı adı veya e-posta
             <input class="input" name="u" [(ngModel)]="user" autocomplete="username" required autofocus />
           </label>
@@ -35,7 +43,7 @@ import { IconComponent } from '../shared/icon.component';
             <input class="input" name="p" type="password" [(ngModel)]="pass" autocomplete="current-password" required />
           </label>
           @if (error()) { <div class="notice warn" role="alert">{{ error() }}</div> }
-          @if (!tenant) { <div class="notice warn">Bu kurulum için kurum kimliği (customerId) yapılandırılmamış.</div> }
+          @if (!auth.tenantId()) { <div class="notice warn">Bu kurulum için kurum kimliği (customerId) yapılandırılmamış.</div> }
           <button class="btn primary" type="submit" [disabled]="busy() || !user || !pass">
             @if (busy()) { <app-icon name="refresh" class="spin" /> } Giriş
           </button>
@@ -55,10 +63,22 @@ import { IconComponent } from '../shared/icon.component';
     @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } .hero { padding: 28px 22px; } .hero ul, .hero p { display: none; } }
   `]
 })
-export class LoginPage {
-  private auth = inject(AuthService);
+export class LoginPage implements OnInit {
+  auth = inject(AuthService);
+  private api = inject(ApiService);
   private router = inject(Router);
-  tenant = inject(ConfigService).config.customerId;
+  institutions = signal<PublicInstitution[]>([]);
+
+  ngOnInit() {
+    this.api.publicInstitutions().subscribe({
+      next: list => {
+        this.institutions.set(list);
+        // Remembered/default institution must be one that exists; otherwise start with the first.
+        if (list.length && !list.some(i => i.id === this.auth.tenantId())) this.auth.chooseTenant(list[0].id);
+      },
+      error: () => { /* single-institution deployments keep working from config.json */ }
+    });
+  }
   user = ''; pass = '';
   busy = signal(false);
   error = signal('');

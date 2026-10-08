@@ -9,8 +9,10 @@ const KEY = 'nv.session';
 const CLAIM = {
   name: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name',
   given: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname',
-  role: 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'
+  role: 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role',
+  tenant: 'http://schemas.microsoft.com/ws/2008/06/identity/claims/userdata'
 };
+const TENANT_KEY = 'nv.tenant';
 
 function decode(token: string): Record<string, unknown> {
   try {
@@ -37,7 +39,20 @@ export class AuthService {
     const r = this.claims()[CLAIM.role];
     return Array.isArray(r) ? (r as string[]) : r ? [r as string] : [];
   });
+  // Institution: the token's claim once signed in; before that the one picked on the login page (remembered), else the deployment default.
+  readonly chosenTenant = signal<string>(this.rememberedTenant());
+  readonly tenantId = computed(() => (this.claims()[CLAIM.tenant] as string) || this.chosenTenant() || this.cfg.config.customerId);
+  readonly isSystemAdmin = computed(() => this.roles().includes('NeuroVoxAdmin'));
+  readonly isInstitutionAdmin = computed(() => this.roles().includes('KurumAdmin') || this.isSystemAdmin());
   get accessToken() { return this.session()?.accessToken ?? null; }
+
+  private rememberedTenant(): string {
+    try { return localStorage.getItem(TENANT_KEY) ?? ''; } catch { return ''; }
+  }
+  chooseTenant(id: string) {
+    this.chosenTenant.set(id);
+    try { localStorage.setItem(TENANT_KEY, id); } catch { /* private mode */ }
+  }
 
   private restore(): Session | null {
     try { return JSON.parse(sessionStorage.getItem(KEY) ?? 'null'); } catch { return null; }

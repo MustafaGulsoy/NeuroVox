@@ -27,6 +27,13 @@ export interface Summary {
 }
 export interface AppUser { id: string; email?: string; nameSurname?: string; userName?: string; userRole?: string; }
 export interface Role { id: string; name: string; }
+export interface PermissionItem { code: string; group: string; label: string; }
+export interface RolePermissions { role: string; editable: boolean; codes: string[]; }
+export interface Institution {
+  id: string; name: string; city?: string; email?: string; phoneNumber?: string; maxUsers?: number | null; subscriptionEndDate?: string | null;
+  isActive: boolean; isSystem: boolean; createdAt: string; userCount: number; participantCount: number; recordingCount: number;
+}
+export interface PublicInstitution { id: string; name: string; }
 
 export const VISIT_TYPES = ['Başlangıç', '6. ay', '12. ay', '18. ay', '24. ay', 'Diğer'];
 export const OUTCOME_TYPES = ['Stabil MCI', "AD'ye dönüşüm", 'Diğer tanı', 'İyileşme', 'Takip kaybı'];
@@ -39,7 +46,8 @@ export const STATUS_LABEL: Record<number, string> = { 0: 'Beklemede', 1: 'Kuyruk
 export const VALIDATION_LABEL = ['Deneysel', 'Onay bekliyor', 'Protokol onaylı'];
 
 export interface KaggleAccount {
-  id: string; username: string; status: 'online' | 'starting' | 'offline' | 'error';
+  id: string; username: string; status: 'online' | 'starting' | 'offline' | 'error' | 'disabled' | 'scheduled';
+  enabled: boolean; resumeAtUtc?: string | null; upToDate: boolean;
   mode?: 'gpu' | 'cpu' | null; gpuHoursUsed: number; gpuHoursLimit: number; gpuExhausted: boolean;
   lastHeartbeatUtc?: string; kernelStartedUtc?: string; lastError?: string;
 }

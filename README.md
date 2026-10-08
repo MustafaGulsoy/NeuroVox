@@ -109,3 +109,11 @@ Export yalnızca aktif onamı olan katılımcıları ve `ConversionToAD` / `Stab
 | Per-visit model estimate | Participant detail > Ziyaretler > Model tahmini |
 
 Not in scope by decision: neuroimaging (MTA/GCA/Fazekas) and video; no deep-learning model (classical models are the right size for ~50 participants).
+
+## Multi-tenant administration
+
+- **Institutions** (system admin: Sistem > Kurumlar). Creating one also creates its `KurumAdmin` user and the default `KurumAdmin` / `Doktor` roles. Deactivating an institution blocks sign-in.
+- **Roles are matched by id inside the caller's institution** (`TenantRolePermissionFilter`), not by name; BaseAuth's own user/role handlers are not used because they ignore the tenant. `KurumAdmin` manages its institution's users and edits the permissions of `Doktor` and custom roles (Kullanıcılar > Yetkiler); the grantable set is `TenantRoles.Catalog`.
+- **System admin** = role `NeuroVox:SystemAdminRole` inside the institution flagged `IsSystemCompany`. Kaggle accounts are one system-wide pool shared by all institutions (enable/disable, scheduled start, stop; kernels on old code are replaced automatically, `NeuroVox:KaggleAutoUpdate`).
+- Trained models are stored per institution (`<models>/<customer>/current`).
+- Backups: `deploy/backup.sh` (database, audio, models, `.env`) runs daily from cron on the server.

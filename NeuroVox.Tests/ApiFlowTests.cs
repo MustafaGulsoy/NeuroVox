@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -17,6 +17,12 @@ using NeuroVox.Persistence.Contexts;
 namespace NeuroVox.Tests
 {
     // Boots the real pipeline (auth scheme, tenant binding, filters, controllers) on an in-memory DB.
+    // Role-name-only system admin check: these tests run without a BaseAuth database (the tenant rules have their own tests).
+    public class RoleOnlySystemAccess(IServiceScopeFactory s, Microsoft.Extensions.Configuration.IConfiguration c) : NeuroVox.WebApi.Services.SystemAccess(s, c)
+    {
+        public override Task<bool> IsSystemAdminAsync(System.Security.Claims.ClaimsPrincipal user) => Task.FromResult(user.IsInRole(Role));
+    }
+
     // Only BaseAuth's role-permission lookup is stubbed; the permission matrix itself is BaseAuth's concern.
     public class ApiFlowTests : IClassFixture<ApiFlowTests.Factory>
     {
@@ -53,6 +59,12 @@ namespace NeuroVox.Tests
                     users.Setup(u => u.HasRolePermissionToEndpointAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(true);
                     s.RemoveAll<IUserService>();
                     s.AddScoped(_ => users.Object);
+                    var perms = new Mock<NeuroVox.WebApi.Services.IPermissionChecker>();
+                    perms.Setup(p => p.HasAsync(It.IsAny<System.Security.Claims.ClaimsPrincipal>(), It.IsAny<string>())).ReturnsAsync(true);
+                    s.RemoveAll<NeuroVox.WebApi.Services.IPermissionChecker>();
+                    s.AddScoped(_ => perms.Object);
+                    s.RemoveAll<NeuroVox.WebApi.Services.SystemAccess>();
+                    s.AddSingleton<NeuroVox.WebApi.Services.SystemAccess, RoleOnlySystemAccess>();
                 });
             }
         }

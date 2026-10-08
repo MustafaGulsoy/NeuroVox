@@ -4,7 +4,7 @@ import { catchError, from, switchMap, throwError } from 'rxjs';
 import { AuthService } from './auth.service';
 import { ConfigService } from './config.service';
 
-const PUBLIC = ['/api/Auth/Login', '/api/Auth/RefreshTokenLogin'];
+const PUBLIC = ['/api/Auth/Login', '/api/Auth/RefreshTokenLogin', '/api/Customers/public'];
 
 export const apiInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
@@ -13,7 +13,7 @@ export const apiInterceptor: HttpInterceptorFn = (req, next) => {
 
   const withHeaders = (r: HttpRequest<unknown>, token: string | null) => r.clone({
     url: cfg.apiBase + r.url,
-    setHeaders: { customerid: cfg.customerId, ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+    setHeaders: { customerid: auth.tenantId(), ...(token ? { Authorization: `Bearer ${token}` } : {}) }
   });
   const isPublic = PUBLIC.some(p => req.url.startsWith(p));
 

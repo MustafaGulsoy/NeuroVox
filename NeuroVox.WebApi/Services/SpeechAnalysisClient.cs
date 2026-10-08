@@ -99,7 +99,7 @@ namespace NeuroVox.WebApi.Services
                     else
                     {
                         // Remote hosts do not share the model volume: send the (small) current model with the request.
-                        var m = models.ReadCurrent(name);
+                        var m = models.ReadCurrent(customerId, name);
                         if (m is null) return null;
                         path = "predict-upload";
                         body = new MultipartFormDataContent

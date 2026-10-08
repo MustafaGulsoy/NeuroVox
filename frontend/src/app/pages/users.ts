@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
-import { AppUser, Role } from '../core/models';
+import { AppUser, PermissionItem, Role } from '../core/models';
 import { ToastService } from '../core/toast.service';
 import { IconComponent } from '../shared/icon.component';
 import { Empty, Modal } from '../shared/ui';
@@ -11,7 +11,7 @@ import { Empty, Modal } from '../shared/ui';
   imports: [FormsModule, IconComponent, Modal, Empty],
   template: `
     <div class="page">
-      <div class="page-head"><div><h1>Kullanıcılar ve roller</h1><p>Terapist ve araştırmacı hesapları. Yetkiler rollere bağlı endpoint izinleriyle verilir.</p></div></div>
+      <div class="page-head"><div><h1>Kullanıcılar ve roller</h1><p>Kurumunuzun kullanıcıları ve rolleri. Doktor rolünün neleri yapabileceğini “Yetkiler” ile siz belirlersiniz; başka kurumların kullanıcıları burada görünmez.</p></div></div>
 
       <div class="card flush" style="margin-bottom:16px">
         <header style="padding:16px 20px 0"><h2>Kullanıcılar</h2><button class="btn sm primary" (click)="openUser()"><app-icon name="plus" /> Yeni kullanıcı</button></header>
@@ -37,9 +37,13 @@ import { Empty, Modal } from '../shared/ui';
           <button class="btn primary" (click)="addRole()" [disabled]="!newRole.trim()"><app-icon name="plus" /> Rol ekle</button>
         </div>
         <div class="table-wrap"><table class="table"><tbody>
-          @for (r of roles(); track r.id) { <tr><td><b>{{ r.name }}</b></td><td class="right"><button class="btn sm danger" (click)="removeRole(r)" aria-label="Rolü sil"><app-icon name="trash" /></button></td></tr> }
+          @for (r of roles(); track r.id) { <tr><td><b>{{ r.name }}</b>@if (fixedRole(r)) { <span class="muted" style="margin-left:8px">varsayılan</span> }</td>
+            <td class="right"><div class="row" style="justify-content:flex-end;gap:6px">
+              @if (editable(r)) { <button class="btn sm" (click)="openPerms(r)"><app-icon name="shield" /> Yetkiler</button> }
+              @if (!fixedRole(r)) { <button class="btn sm danger" (click)="removeRole(r)" aria-label="Rolü sil"><app-icon name="trash" /></button> }
+            </div></td></tr> }
         </tbody></table></div>
-        <div style="padding:14px 20px"><div class="notice">Yeni rolün hangi işlemlere izin verdiği BaseAuth endpoint izinleriyle belirlenir; yeni roller başlangıçta hiçbir işleme izin vermez.</div></div>
+        <div style="padding:14px 20px"><div class="notice">Yeni roller başlangıçta hiçbir işleme izin vermez. KurumAdmin rolü sabittir; Doktor ve kendi oluşturduğunuz roller düzenlenebilir.</div></div>
       </div>
     </div>
 
@@ -66,6 +70,18 @@ import { Empty, Modal } from '../shared/ui';
       </app-modal>
     }
 
+    @if (perm(); as p) {
+      <app-modal [title]="'Yetkiler · ' + p.name" (close)="perm.set(null)" [wide]="true">
+        @for (g of groups(); track g) {
+          <h3 style="margin:12px 0 6px">{{ g }}</h3>
+          <div class="stack">@for (i of catalog(); track i.code) { @if (i.group === g) {
+            <label class="check"><input type="checkbox" [checked]="granted().has(i.code)" (change)="flip(i.code)" /> {{ i.label }}</label> } }</div>
+        }
+        <div class="notice" style="margin-top:12px">Ses kayıtları sağlık verisidir: dışa aktarma, silme ve model eğitimi yetkilerini yalnızca gerçekten gereken kişilere verin.</div>
+        <ng-container footer><button class="btn" (click)="perm.set(null)">Vazgeç</button><button class="btn primary" (click)="savePerms()">Kaydet</button></ng-container>
+      </app-modal>
+    }
+
     @if (delUser()) {
       <app-modal title="Kullanıcıyı sil" (close)="delUser.set(null)">
         <p><b>{{ delUser()!.nameSurname }}</b> hesabı silinecek. Devam edilsin mi?</p>
@@ -79,12 +95,26 @@ export class UsersPage implements OnInit {
   users = signal<AppUser[]>([]); roles = signal<Role[]>([]);
   uOpen = signal(false); assign = signal<AppUser | null>(null); delUser = signal<AppUser | null>(null);
   picked = signal(new Set<string>());
+  perm = signal<Role | null>(null); catalog = signal<PermissionItem[]>([]); granted = signal(new Set<string>());
+  groups = () => [...new Set(this.catalog().map(i => i.group))];
+  fixedRole = (r: Role) => r.name === 'KurumAdmin' || r.name === 'Doktor' || r.name === 'NeuroVoxAdmin';
+  editable = (r: Role) => r.name !== 'KurumAdmin' && r.name !== 'NeuroVoxAdmin';
   uf: any = {}; newRole = '';
 
   ngOnInit() { this.load(); }
   load() {
     this.api.users().subscribe({ next: r => this.users.set(r.users as AppUser[] ?? []), error: e => this.toast.err(e) });
     this.api.roles().subscribe({ next: r => this.roles.set((r.datas as Role[]) ?? []), error: e => this.toast.err(e) });
+  }
+
+  openPerms(r: Role) {
+    this.api.permissionCatalog().subscribe({ next: c => this.api.rolePermissions(r.id).subscribe({
+      next: p => { this.catalog.set(c); this.granted.set(new Set(p.codes)); this.perm.set(r); }, error: e => this.toast.err(e) }), error: e => this.toast.err(e) });
+  }
+  flip(code: string) { this.granted.update(s => { const n = new Set(s); n.has(code) ? n.delete(code) : n.add(code); return n; }); }
+  savePerms() {
+    this.api.setRolePermissions(this.perm()!.id, [...this.granted()]).subscribe({
+      next: () => { this.perm.set(null); this.toast.ok('Yetkiler güncellendi'); }, error: e => this.toast.err(e) });
   }
 
   openUser() { this.uf = { nameSurname: '', username: '', email: '', password: '', passwordConfirm: '', role: '' }; this.uOpen.set(true); }

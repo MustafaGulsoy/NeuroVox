@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.RegularExpressions;
@@ -183,6 +183,60 @@ namespace NeuroVox.Tests
                 await Task.Delay(100);
             }
             Assert.Fail("training run was not processed by the queue worker");
+        }
+    }
+
+    // Admin controls: switch, scheduled start, stop, replacing kernels that run old code.
+    public class KaggleControlTests : IClassFixture<KaggleAccountsTests.KFactory>
+    {
+        private readonly KaggleAccountsTests.KFactory _f;
+        public KaggleControlTests(KaggleAccountsTests.KFactory f) => _f = f;
+
+        [Fact]
+        public async Task Disabled_Scheduled_And_Outdated_Kernels_Are_Handled_By_The_Keeper()
+        {
+            var tenant = Guid.NewGuid();
+            var admin = _f.CreateClient();
+            admin.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", ApiFlowTests.Token(tenant, role: "NeuroVoxAdmin"));
+            admin.DefaultRequestHeaders.Add("customerid", tenant.ToString());
+            var r = await admin.PostAsJsonAsync("/api/KaggleAccounts", new { username = "carl", apiKey = "plain-secret-token-1234" });
+            var id = (await r.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetGuid();
+            var keeper = ActivatorUtilities.CreateInstance<NeuroVox.WebApi.Background.KaggleKeeper>(_f.Services);
+            async Task<Domain.Entities.KaggleAccount> Row(Action<Domain.Entities.KaggleAccount>? f = null)
+            {
+                using var scope = _f.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<NeuroVoxDbContext>();
+                var a = await db.KaggleAccounts.IgnoreQueryFilters().SingleAsync(x => x.Id == id);
+                if (f is not null) { f(a); await db.SaveChangesAsync(); }
+                return a;
+            }
+
+            // Scheduled for later: nothing is started until the time has come.
+            Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/KaggleAccounts/{id}/schedule", new { resumeAtUtc = DateTime.UtcNow.AddHours(5) })).StatusCode);
+            _f.Kaggle.LastCode = null;
+            await keeper.TickAsync(default);
+            Assert.Null(_f.Kaggle.LastCode);
+            Assert.Contains("scheduled", await admin.GetStringAsync("/api/KaggleAccounts"));
+            await Row(a => a.ResumeAtUtc = DateTime.UtcNow.AddMinutes(-1));
+            await keeper.TickAsync(default);
+            Assert.NotNull(_f.Kaggle.LastCode);   // always-on: the schedule passed, the kernel starts
+
+            // Online but running old code and idle: revoked, then started again with the current version.
+            await Row(a => { a.PublicUrl = "https://a-b.trycloudflare.com"; a.LastHeartbeatUtc = DateTime.UtcNow; a.KernelVersion = "old"; });
+            await keeper.TickAsync(default);
+            var stopped = await Row();
+            Assert.Null(stopped.PublicUrl);
+            Assert.Null(stopped.RegisterTokenHash);   // not restarted in the same tick
+            await keeper.TickAsync(default);
+            Assert.NotNull((await Row()).RegisterTokenHash);   // next tick: new kernel
+            await Row(a => AiHostPool.Stop(a));
+
+            // Switch off: never started, even with work queued.
+            Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/KaggleAccounts/{id}/enabled", new { enabled = false })).StatusCode);
+            _f.Kaggle.LastCode = null;
+            await keeper.TickAsync(default);
+            Assert.Null(_f.Kaggle.LastCode);
+            Assert.Contains("disabled", await admin.GetStringAsync("/api/KaggleAccounts"));
         }
     }
 }

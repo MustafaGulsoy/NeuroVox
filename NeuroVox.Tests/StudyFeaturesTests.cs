@@ -215,8 +215,9 @@ namespace NeuroVox.Tests
             var c = Client(tenant);
             Assert.Equal(HttpStatusCode.ServiceUnavailable, (await c.GetAsync($"/api/Predictions/visit/{visits[0]}")).StatusCode);   // no model yet
             var models = _f.Services.GetRequiredService<ModelStorage>();
-            Directory.CreateDirectory(Path.Combine(models.Root, "current"));
-            File.WriteAllText(Path.Combine(models.Root, "current", "feature_order.json"), "[\"ttr\",\"ace_total\",\"never_measured\"]");
+            var cur = Path.Combine(models.Root, tenant.ToString("N"), "current");
+            Directory.CreateDirectory(cur);
+            File.WriteAllText(Path.Combine(cur, "feature_order.json"), "[\"ttr\",\"ace_total\",\"never_measured\"]");
             var res = await c.GetFromJsonAsync<JsonElement>($"/api/Predictions/visit/{visits[0]}");
             Assert.Equal(0.8, res.GetProperty("modelEstimatedRisk").GetDouble());
             Assert.Equal(2, res.GetProperty("featuresUsed").GetInt32());

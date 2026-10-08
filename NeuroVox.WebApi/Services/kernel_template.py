@@ -52,7 +52,7 @@ print("tunnel ready", flush=True)
 
 
 def register():
-    req = urllib.request.Request(API_URL + "/api/AiHosts/register", data=json.dumps({"url": url, "gpu": HAS_GPU}).encode(), method="POST",
+    req = urllib.request.Request(API_URL + "/api/AiHosts/register", data=json.dumps({"url": url, "gpu": HAS_GPU, "version": "__VERSION__"}).encode(), method="POST",
                                  headers={"Content-Type": "application/json", "X-Register-Token": REGISTER_TOKEN, "customerid": CUSTOMER_ID})
     try:
         urllib.request.urlopen(req, timeout=20).read()

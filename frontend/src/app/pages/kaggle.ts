@@ -7,8 +7,8 @@ import { ToastService } from '../core/toast.service';
 import { IconComponent } from '../shared/icon.component';
 import { Empty, Modal } from '../shared/ui';
 
-const LABEL: Record<string, string> = { online: 'Çevrimiçi', starting: 'Başlatılıyor', offline: 'Kapalı', error: 'Hata' };
-const CLS: Record<string, string> = { online: 'ok', starting: 'warn', offline: '', error: 'err' };
+const LABEL: Record<string, string> = { online: 'Çevrimiçi', starting: 'Başlatılıyor', offline: 'Kapalı', error: 'Hata', disabled: 'Devre dışı', scheduled: 'Zamanlandı' };
+const CLS: Record<string, string> = { online: 'ok', starting: 'warn', offline: '', error: 'err', disabled: '', scheduled: 'info' };
 const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Çalışıyor', 'info'], 3: ['Tamamlandı', 'ok'], 4: ['Başarısız', 'err'] };
 
 @Component({
@@ -42,9 +42,13 @@ const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Ça
                   <div class="muted" style="font-size:.8rem">{{ a.gpuHoursUsed }} / {{ a.gpuHoursLimit }} sa{{ a.gpuExhausted ? ' · kota doldu' : '' }}</div>
                   <progress [value]="a.gpuHoursUsed" [max]="a.gpuHoursLimit" style="width:100%"></progress></td>
                 <td>{{ a.lastHeartbeatUtc ? (a.lastHeartbeatUtc + 'Z' | date: 'dd.MM HH:mm:ss') : '—' }}</td>
-                <td class="muted">{{ a.lastError || '' }}</td>
+                <td class="muted">@if (a.status === 'scheduled') { {{ a.resumeAtUtc + 'Z' | date: 'dd.MM HH:mm' }} 'de başlar } @else { {{ a.lastError || '' }} }
+                  @if (a.status === 'online' && !a.upToDate) { <div>Eski sürüm; boşalınca otomatik yenilenir</div> }</td>
                 <td class="right"><div class="row" style="justify-content:flex-end;gap:6px">
-                  <button class="btn sm" (click)="connect(a)" [disabled]="busy() === a.id || a.status === 'starting'"><app-icon name="play" /> Şimdi bağlan</button>
+                  <button class="btn sm" (click)="connect(a)" [disabled]="busy() === a.id || a.status === 'starting' || !a.enabled"><app-icon name="play" /> Şimdi bağlan</button>
+                  @if (a.status === 'online' || a.status === 'starting') { <button class="btn sm" (click)="stop(a)">Durdur</button> }
+                  <button class="btn sm" (click)="schedule.set(a); at = ''">Zamanla</button>
+                  <button class="btn sm" (click)="setEnabled(a, !a.enabled)">{{ a.enabled ? 'Devre dışı bırak' : 'Etkinleştir' }}</button>
                   <button class="btn sm danger" (click)="del.set(a)" aria-label="Sil"><app-icon name="trash" /></button>
                 </div></td></tr>
             }</tbody>
@@ -101,6 +105,15 @@ const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Ça
       </app-modal>
     }
 
+    @if (schedule(); as a) {
+      <app-modal [title]="'Zamanlı başlatma · ' + a.username" (close)="schedule.set(null)">
+        <label class="field">Bu saatten önce kernel açılmaz (yerel saatiniz)<input class="input" type="datetime-local" name="at" [(ngModel)]="at" /></label>
+        <div class="notice" style="margin-top:12px">Zamanlanınca çalışan kernel kapatılır; saat gelince sistem hesabı kendiliğinden başlatır. Zamanlamayı kaldırmak için “Zamanlamayı kaldır”a basın.</div>
+        <ng-container footer><button class="btn" (click)="saveSchedule(null)">Zamanlamayı kaldır</button>
+          <button class="btn primary" (click)="saveSchedule(at)" [disabled]="!at">Kaydet</button></ng-container>
+      </app-modal>
+    }
+
     @if (del()) {
       <app-modal title="Hesabı sil" (close)="del.set(null)">
         <p><b>{{ del()!.username }}</b> ve şifreli token’ı kalıcı olarak silinecek; çalışan kernel bir sonraki sinyalde kendini kapatır.</p>
@@ -116,6 +129,7 @@ export class KaggleAccountsPage implements OnInit {
   detail = signal<TrainingRun | null>(null);
   adding = signal(false); saving = signal(false); busy = signal(''); del = signal<KaggleAccount | null>(null);
   f = { username: '', apiKey: '' };
+  schedule = signal<KaggleAccount | null>(null); at = '';
   label = LABEL; cls = CLS;
 
   constructor() {
@@ -151,6 +165,17 @@ export class KaggleAccountsPage implements OnInit {
       next: () => { this.busy.set(''); this.toast.ok('Kernel başlatıldı; çevrimiçi olması birkaç dakika sürer'); this.load(); },
       error: e => { this.busy.set(''); this.toast.err(e); this.load(); }
     });
+  }
+  setEnabled(a: KaggleAccount, enabled: boolean) {
+    this.api.setKaggleEnabled(a.id, enabled).subscribe({ next: () => { this.toast.ok(enabled ? 'Hesap etkinleştirildi' : 'Hesap devre dışı; kernel kapatılıyor'); this.load(); }, error: e => this.toast.err(e) });
+  }
+  stop(a: KaggleAccount) {
+    this.api.stopKaggle(a.id).subscribe({ next: () => { this.toast.ok('Kernel kapatılıyor; gerektiğinde yeniden açılır'); this.load(); }, error: e => this.toast.err(e) });
+  }
+  saveSchedule(local: string | null) {
+    const a = this.schedule()!;
+    this.api.scheduleKaggle(a.id, local ? new Date(local).toISOString() : null).subscribe({
+      next: () => { this.schedule.set(null); this.toast.ok(local ? 'Zamanlandı' : 'Zamanlama kaldırıldı'); this.load(); }, error: e => this.toast.err(e) });
   }
   remove() {
     this.api.deleteKaggle(this.del()!.id).subscribe({ next: () => { this.del.set(null); this.toast.ok('Hesap silindi'); this.load(); }, error: e => this.toast.err(e) });

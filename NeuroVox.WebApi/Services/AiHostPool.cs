@@ -50,21 +50,34 @@ namespace NeuroVox.WebApi.Services
             return new AiHost("local", new Uri(url), config["NeuroVox:AiApiKey"] ?? "", config.GetValue<bool>("NeuroVox:AiUpload"));
         }
 
-        /// <summary>Hosts able to serve the tenant right now. Tenants with Kaggle accounts use only those (waiting when none is online).</summary>
+        /// <summary>Hosts able to serve work right now. The Kaggle accounts are one system-wide pool shared by every institution;
+        /// while the system has any account, only those are used (jobs wait when none is online).</summary>
         public async Task<List<AiHost>> OnlineHostsAsync(Guid customerId, CancellationToken ct)
         {
             List<KaggleAccount> accounts;
             using (var scope = scopes.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<NeuroVoxDbContext>();
-                accounts = await db.KaggleAccounts.IgnoreQueryFilters().AsNoTracking()
-                    .Where(a => a.CustomerId == customerId && a.RowIsActive).ToListAsync(ct);
+                accounts = await db.KaggleAccounts.IgnoreQueryFilters().AsNoTracking().Where(a => a.RowIsActive).ToListAsync(ct);
             }
             if (accounts.Count == 0 || !protector.Enabled) return LocalHost() is { } l ? [l] : [];
-            return accounts.Where(IsOnline)
+            return accounts.Where(a => a.Enabled && IsOnline(a))
                 .Select(a => new AiHost(a.Id.ToString(), new Uri(a.PublicUrl!.TrimEnd('/') + "/"), protector.Unprotect(a.EncryptedAiKey!, "ai:" + a.Id), true))
                 .ToList();
         }
+
+        public bool IsBusy(Guid accountId) { lock (_busy) return _busy.Contains(accountId.ToString()); }
+
+        /// <summary>Revokes the running kernel: its next heartbeat is answered 410 and it exits (Kaggle has no stop API).</summary>
+        public static void Stop(KaggleAccount a)
+        {
+            a.RegisterTokenHash = null; a.PublicUrl = null; a.LastHeartbeatUtc = null;
+            a.KernelStartedUtc = null; a.LastConnectAttemptUtc = null; a.LastError = null;
+        }
+
+        /// <summary>Identifies the AI sources a kernel runs, so kernels running older code can be replaced.</summary>
+        public static string CurrentVersion { get; } = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Concat(
+            new[] { "ai/app.py", "ai/turkish_nlp.py", "ai/stats.py", "ai/llm_review.py", "ai/train.py", "ai/kernel_template.py" }.Select(Resource))))) [..12];
 
         /// <summary>A free host, or null when every host is busy/offline (the caller keeps the job queued).</summary>
         public async Task<AiLease?> TryLeaseAsync(Guid customerId, CancellationToken ct)
@@ -148,6 +161,7 @@ namespace NeuroVox.WebApi.Services
                 .Replace("__CUSTOMER_ID__", customerId.ToString())
                 .Replace("__REGISTER_TOKEN__", registerToken)
                 .Replace("__AI_KEY__", aiKey)
+                .Replace("__VERSION__", CurrentVersion)
                 .Replace("__IDLE_MINUTES__", idleMinutes.ToString());
         }
     }

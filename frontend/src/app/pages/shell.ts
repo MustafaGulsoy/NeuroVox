@@ -19,8 +19,12 @@ import { IconComponent } from '../shared/icon.component';
           <a routerLink="/analysis" routerLinkActive="on"><app-icon name="chart" />Analiz</a>
           <small>Yönetim</small>
           <a routerLink="/research" routerLinkActive="on"><app-icon name="flask" />Araştırma</a>
-          <a routerLink="/users" routerLinkActive="on"><app-icon name="shield" />Kullanıcılar</a>
-          @if (auth.roles().includes('NeuroVoxAdmin')) { <a routerLink="/kaggle" routerLinkActive="on"><app-icon name="flask" />Kaggle</a> }
+          @if (auth.isInstitutionAdmin()) { <a routerLink="/users" routerLinkActive="on"><app-icon name="shield" />Kullanıcılar</a> }
+          @if (auth.isSystemAdmin()) {
+            <small>Sistem</small>
+            <a routerLink="/institutions" routerLinkActive="on"><app-icon name="users" />Kurumlar</a>
+            <a routerLink="/kaggle" routerLinkActive="on"><app-icon name="flask" />Kaggle</a>
+          }
         </nav>
         <div class="me">
           <div class="avatar">{{ initials() }}</div>

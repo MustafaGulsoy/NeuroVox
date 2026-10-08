@@ -39,6 +39,9 @@ builder.Services.AddScoped<ITenantProvider, TenantProvider>();
 builder.Services.AddSingleton<AudioStorage>();
 builder.Services.AddSingleton<AnalysisQueue>();
 builder.Services.AddSingleton<ModelStorage>();
+builder.Services.AddSingleton<SystemAccess>();
+builder.Services.AddScoped<IPermissionChecker, PermissionChecker>();
+builder.Services.AddHostedService<TenantSeeder>();
 builder.Services.AddHostedService<RecordingAnalysisWorker>();
 builder.Services.AddHostedService<KaggleKeeper>();
 builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = 200_000_000);
@@ -113,7 +116,7 @@ builder.Host.UseSerilog(log);
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add<ValidationFilter>();
-    options.Filters.Add<RolePermissionFilter>();
+    options.Filters.Add<TenantRolePermissionFilter>();
 })
 .AddJsonOptions(options =>
 {

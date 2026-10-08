@@ -21,6 +21,9 @@ namespace NeuroVox.Domain.Entities
         public bool RunningOnGpu { get; set; }                       // what the live kernel reported
         public DateTime? GpuExhaustedUntilUtc { get; set; }          // Kaggle refused a GPU session: use CPU until then
         public DateTime? KernelStartedUtc { get; set; }
+        public bool Enabled { get; set; } = true;                    // admin switch: a disabled account is never started
+        public DateTime? ResumeAtUtc { get; set; }                   // paused until this moment (scheduled start)
+        public string? KernelVersion { get; set; }                   // hash of the AI sources the live kernel runs
         public string? CreatedBy { get; set; }
     }
 }

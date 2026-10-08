@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import {
-  Ace, AnalysisInfo, Annotation, AppUser, KaggleOverview, TrainingRun, GroupComparison, RaterAgreement, VisitPrediction, FeatureDefinition, Outcome, Participant, Protocol, Recording, Role, Stimulus, Summary, Visit
+  Ace, AnalysisInfo, Annotation, AppUser, KaggleOverview, TrainingRun, Institution, PublicInstitution, PermissionItem, RolePermissions, GroupComparison, RaterAgreement, VisitPrediction, FeatureDefinition, Outcome, Participant, Protocol, Recording, Role, Stimulus, Summary, Visit
 } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -62,6 +62,17 @@ export class ApiService {
   addKaggleAccount(username: string, apiKey: string) { return this.http.post<{ id: string }>('/api/KaggleAccounts', { username, apiKey }); }
   connectKaggle(id: string) { return this.http.post<void>(`/api/KaggleAccounts/${id}/connect`, {}); }
   deleteKaggle(id: string) { return this.http.delete<void>(`/api/KaggleAccounts/${id}`); }
+  setKaggleEnabled(id: string, enabled: boolean) { return this.http.put<void>(`/api/KaggleAccounts/${id}/enabled`, { enabled }); }
+  scheduleKaggle(id: string, resumeAtUtc: string | null) { return this.http.put<void>(`/api/KaggleAccounts/${id}/schedule`, { resumeAtUtc }); }
+  stopKaggle(id: string) { return this.http.post<void>(`/api/KaggleAccounts/${id}/stop`, {}); }
+
+  institutions() { return this.http.get<Institution[]>('/api/Institutions'); }
+  createInstitution(b: object) { return this.http.post<{ id: string }>('/api/Institutions', b); }
+  updateInstitution(id: string, b: object) { return this.http.put<void>(`/api/Institutions/${id}`, b); }
+  publicInstitutions() { return this.http.get<PublicInstitution[]>('/api/Customers/public'); }
+  permissionCatalog() { return this.http.get<PermissionItem[]>('/api/Roles/permission-catalog'); }
+  rolePermissions(id: string) { return this.http.get<RolePermissions>(`/api/Roles/${id}/permissions`); }
+  setRolePermissions(id: string, codes: string[]) { return this.http.put<void>(`/api/Roles/${id}/permissions`, { codes }); }
 
   users(page = 0, size = 50) { return this.http.get<{ users: AppUser[]; totalUsersCount: number }>('/api/Users/GetAllUsers', { params: { page, size } }); }
   createUser(b: object) { return this.http.post<any>('/api/Users/CreateUser', b); }

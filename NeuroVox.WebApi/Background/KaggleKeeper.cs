@@ -26,6 +26,8 @@ namespace NeuroVox.WebApi.Background
             }
         }
 
+        private static bool Allowed(KaggleAccount a, DateTime now) => a.Enabled && (a.ResumeAtUtc is null || a.ResumeAtUtc <= now);
+
         private static bool Starting(KaggleAccount a) =>
             a.LastError is null && a.LastHeartbeatUtc is null && a.LastConnectAttemptUtc is { } t && DateTime.UtcNow - t < StartWindow;
 
@@ -44,23 +46,35 @@ namespace NeuroVox.WebApi.Background
             }
             foreach (var a in accounts.Where(a => Starting(a) && now - a.LastConnectAttemptUtc > Diagnose))
                 await DiagnoseAsync(a, week, ct);
+            // Switched off or scheduled for later: shut a running kernel down (its next heartbeat is answered 410).
+            var cooling = new HashSet<Guid>();   // stopped this tick: the old kernel needs a heartbeat to notice, so no restart before the next tick
+            foreach (var a in accounts.Where(a => !Allowed(a, now) && (AiHostPool.IsOnline(a) || a.LastConnectAttemptUtc != null)))
+                AiHostPool.Stop(a);
+            // Kernels running older AI code are replaced as soon as they are idle; the next tick starts the new version.
+            if (config.GetValue("NeuroVox:KaggleAutoUpdate", true))
+                foreach (var a in accounts.Where(a => Allowed(a, now) && AiHostPool.IsOnline(a) && a.KernelVersion != AiHostPool.CurrentVersion && !pool.IsBusy(a.Id)))
+                {
+                    log.LogInformation("Kaggle keeper: {User} runs an old kernel version, restarting", a.Username);
+                    AiHostPool.Stop(a);
+                    cooling.Add(a.Id);
+                }
             await db.SaveChangesAsync(ct);
 
             var alwaysOn = config.GetValue("NeuroVox:KaggleAlwaysOn", true);
             var maxParallel = Math.Max(1, config.GetValue("NeuroVox:KaggleMaxParallel", 2));
 
-            foreach (var tenant in accounts.GroupBy(a => a.CustomerId))
+            foreach (var tenant in accounts.Where(a => Allowed(a, now)).GroupBy(_ => 0))   // one system-wide pool shared by all institutions
             {
-                var pending = await db.SpeechRecordings.IgnoreQueryFilters().CountAsync(r => r.CustomerId == tenant.Key && !r.RowIsDeleted
+                var pending = await db.SpeechRecordings.IgnoreQueryFilters().CountAsync(r => !r.RowIsDeleted
                                   && (r.AnalysisStatus == AnalysisStatus.Queued || r.AnalysisStatus == AnalysisStatus.Running), ct)
-                              + await db.TrainingRuns.IgnoreQueryFilters().CountAsync(r => r.CustomerId == tenant.Key && !r.RowIsDeleted
+                              + await db.TrainingRuns.IgnoreQueryFilters().CountAsync(r => !r.RowIsDeleted
                                   && (r.Status == AnalysisStatus.Queued || r.Status == AnalysisStatus.Running), ct);
                 var desired = Math.Min(tenant.Count(), pending == 0 ? (alwaysOn ? 1 : 0) : Math.Clamp((pending + 1) / 2, 1, maxParallel));
                 // A kernel close to Kaggle's session limit no longer counts: its replacement starts on another account while it still serves.
                 var aging = tenant.Count(a => AiHostPool.IsOnline(a) && a.KernelStartedUtc is { } k && now - k > HandoffAfter);
                 if (tenant.Count(a => AiHostPool.IsOnline(a) || Starting(a)) - aging >= desired) continue;
 
-                var pick = tenant.Where(a => !AiHostPool.IsOnline(a) && !Starting(a)
+                var pick = tenant.Where(a => !cooling.Contains(a.Id) && !AiHostPool.IsOnline(a) && !Starting(a)
                                              && (a.LastError is null || now - a.LastConnectAttemptUtc > ErrorBackoff))
                     .OrderByDescending(pool.RemainingGpuSeconds).ThenBy(_ => Random.Shared.Next()).FirstOrDefault();
                 if (pick is null) continue;

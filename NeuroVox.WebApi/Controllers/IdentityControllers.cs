@@ -22,84 +22,23 @@ namespace NeuroVox.WebApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class AuthController(IMediator mediator) : ControllerBase
+    public class AuthController(IMediator mediator, BaseAuth.Persistence.Contexts.AuthDbContext db) : ControllerBase
     {
         [HttpPost("[action]")]
         public async Task<IActionResult> Login([FromBody] LoginUserCommandRequest request)
         {
-            if (HttpContext.Items["customerid"] is Guid customerId) request.CustomerId = customerId;
+            if (HttpContext.Items["customerid"] is Guid customerId)
+            {
+                request.CustomerId = customerId;
+                // A deactivated institution or an expired subscription cannot sign in.
+                if (!await NeuroVox.WebApi.Services.Tenants.IsOpenAsync(db, customerId))
+                    return StatusCode(StatusCodes.Status403Forbidden, new { title = "Kurum hesabı pasif veya süresi dolmuş." });
+            }
             return Ok(await mediator.Send(request));
         }
 
         [HttpPost("[action]")]
         public async Task<IActionResult> RefreshTokenLogin([FromBody] RefreshTokenLoginCommandRequest request)
-            => Ok(await mediator.Send(request));
-    }
-
-    [Route("api/[controller]")]
-    [ApiController]
-    [Authorize]
-    public class UsersController(IMediator mediator) : ControllerBase
-    {
-        [HttpPost("[action]")]
-        [AuthorizeDefinition(ActionType = ActionType.Writing, Definition = "Create User", Menu = "Users")]
-        public async Task<IActionResult> CreateUser([FromBody] CreateUserCommandRequest request)
-        {
-            // Users are always created inside the caller's tenant.
-            request.CustomerId = (HttpContext.Items["customerid"] as Guid?)?.ToString() ?? "";
-            return Ok(await mediator.Send(request));
-        }
-
-        [HttpGet("[action]")]
-        [AuthorizeDefinition(ActionType = ActionType.Reading, Definition = "Get All Users", Menu = "Users")]
-        public async Task<IActionResult> GetAllUsers([FromQuery] GetAllUsersQueryRequest request)
-        {
-            request.Size = Math.Clamp(request.Size, 1, 200);
-            return Ok(await mediator.Send(request));
-        }
-
-        [HttpGet("[action]/{UserId}")]
-        [AuthorizeDefinition(ActionType = ActionType.Reading, Definition = "Get Roles To User", Menu = "Users")]
-        public async Task<IActionResult> GetRolesToUser([FromRoute] GetRolesToUserQueryRequest request)
-            => Ok(await mediator.Send(request));
-
-        [HttpPost("[action]")]
-        [AuthorizeDefinition(ActionType = ActionType.Writing, Definition = "Assign Role To User", Menu = "Users")]
-        public async Task<IActionResult> AssignRoleToUser([FromBody] AssignRoleToUserCommandRequest request)
-            => Ok(await mediator.Send(request));
-
-        [HttpDelete("[action]/{Id}")]
-        [AuthorizeDefinition(ActionType = ActionType.Deleting, Definition = "Delete User", Menu = "Users")]
-        public async Task<IActionResult> DeleteUser([FromRoute] DeleteUserCommandRequest request)
-            => Ok(await mediator.Send(request));
-    }
-
-    [Route("api/[controller]")]
-    [ApiController]
-    [Authorize]
-    public class RolesController(IMediator mediator) : ControllerBase
-    {
-        [HttpGet("[action]")]
-        [AuthorizeDefinition(ActionType = ActionType.Reading, Definition = "Get Roles", Menu = "Roles")]
-        public async Task<IActionResult> GetRoles([FromQuery] GetRolesQueryRequest request)
-        {
-            request.Size = Math.Clamp(request.Size, 1, 200);
-            return Ok(await mediator.Send(request));
-        }
-
-        [HttpPost("[action]")]
-        [AuthorizeDefinition(ActionType = ActionType.Writing, Definition = "Create Role", Menu = "Roles")]
-        public async Task<IActionResult> CreateRole([FromBody] CreateRoleCommandRequest request)
-            => Ok(await mediator.Send(request));
-
-        [HttpPut("[action]")]
-        [AuthorizeDefinition(ActionType = ActionType.Updating, Definition = "Update Role", Menu = "Roles")]
-        public async Task<IActionResult> UpdateRole([FromBody] UpdateRoleCommandRequest request)
-            => Ok(await mediator.Send(request));
-
-        [HttpDelete("[action]/{Id}")]
-        [AuthorizeDefinition(ActionType = ActionType.Deleting, Definition = "Delete Role", Menu = "Roles")]
-        public async Task<IActionResult> DeleteRole([FromRoute] DeleteRoleCommandRequest request)
             => Ok(await mediator.Send(request));
     }
 }

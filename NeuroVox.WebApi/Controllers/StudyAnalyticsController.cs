@@ -120,7 +120,7 @@ namespace NeuroVox.WebApi.Controllers
             if (HttpContext.Items["customerid"] is not Guid customerId) return BadRequest(new { title = "customerid missing" });
             var visit = (await TrainingSetBuilder.LoadVisitsAsync(db, customerId, visitId)).FirstOrDefault();
             if (visit is null) return NotFound(new { title = "Bu ziyaret için analiz edilmiş ölçüm yok" });
-            if (!models.TryReadFeatureOrder(out var order)) return StatusCode(503, new { title = "Henüz eğitilmiş model yok" });
+            if (!models.TryReadFeatureOrder(customerId, out var order)) return StatusCode(503, new { title = "Henüz eğitilmiş model yok" });
 
             var used = order.Where(visit.Features.ContainsKey).ToList();
             var result = await ai.PredictAsync(customerId, visit.Features.Where(kv => order.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
