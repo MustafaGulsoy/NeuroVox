@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace NeuroVox.WebApi.Services
 {
-    public class SpeechAnalysisClient(HttpClient http, AudioStorage audio, AiHostPool pool) : ISpeechAnalysisClient
+    public class SpeechAnalysisClient(HttpClient http, AudioStorage audio, AiHostPool pool, ModelStorage models, IConfiguration config) : ISpeechAnalysisClient
     {
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -68,9 +68,12 @@ namespace NeuroVox.WebApi.Services
             catch (HttpRequestException ex) { return (null, ex.Message); }
         }
 
-        public async Task<JsonElement?> CompareAsync(Dictionary<string, Dictionary<string, List<double>>> features)
+        // Light calls (numbers only) go to any online host of the tenant -- no exclusive lease needed.
+        private async Task<AiHost?> AnyHostAsync(Guid customerId) => (await pool.OnlineHostsAsync(customerId, CancellationToken.None)).FirstOrDefault();
+
+        public async Task<JsonElement?> CompareAsync(Guid customerId, Dictionary<string, Dictionary<string, List<double>>> features)
         {
-            var host = pool.LocalHost();
+            var host = await AnyHostAsync(customerId);
             if (host is null) return null;
             try
             {
@@ -81,15 +84,32 @@ namespace NeuroVox.WebApi.Services
             catch (HttpRequestException) { return null; }
         }
 
-        public async Task<JsonElement?> PredictAsync(Dictionary<string, double> features)
+        public async Task<JsonElement?> PredictAsync(Guid customerId, Dictionary<string, double> features)
         {
-            var host = pool.LocalHost();
+            var host = await AnyHostAsync(customerId);
             if (host is null) return null;
+            var name = config["NeuroVox:ModelName"] ?? "logistic_regression";
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 try
                 {
-                    using var req = Req(host, "predict", JsonContent.Create(new { features }, options: JsonOptions));
+                    HttpContent body;
+                    string path;
+                    if (host.Key == "local") { path = "predict"; body = JsonContent.Create(new { features }, options: JsonOptions); }
+                    else
+                    {
+                        // Remote hosts do not share the model volume: send the (small) current model with the request.
+                        var m = models.ReadCurrent(name);
+                        if (m is null) return null;
+                        path = "predict-upload";
+                        body = new MultipartFormDataContent
+                        {
+                            { new ByteArrayContent(m.Value.Model), "model", name + ".joblib" },
+                            { new StringContent(m.Value.FeatureOrder), "feature_order" },
+                            { new StringContent(JsonSerializer.Serialize(features)), "features" }
+                        };
+                    }
+                    using var req = Req(host, path, body);
                     var response = await http.SendAsync(req);
                     return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions) : null;
                 }

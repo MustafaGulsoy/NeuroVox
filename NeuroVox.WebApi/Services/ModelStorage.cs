@@ -20,6 +20,15 @@ namespace NeuroVox.WebApi.Services
             return order.Count > 0;
         }
 
+        /// <summary>Current model file and feature order, for hosts that do not mount the model volume.</summary>
+        public (byte[] Model, string FeatureOrder)? ReadCurrent(string name)
+        {
+            if (!Allowed.IsMatch(name)) return null;
+            var m = Path.Combine(Root, "current", name + ".joblib");
+            var f = Path.Combine(Root, "current", "feature_order.json");
+            return File.Exists(m) && File.Exists(f) ? (File.ReadAllBytes(m), File.ReadAllText(f)) : null;
+        }
+
         /// <summary>Extracts a trusted-format zip (flat files only, no paths) and publishes it as `current`. Returns the run-relative path and report.json text.</summary>
         public (string RelativePath, string Report) Save(Guid customerId, Guid runId, byte[] zip)
         {

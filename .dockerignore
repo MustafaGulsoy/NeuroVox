@@ -6,6 +6,7 @@ services/**
 !services/neurovox_ai/app.py
 !services/neurovox_ai/turkish_nlp.py
 !services/neurovox_ai/stats.py
+!services/neurovox_ai/llm_review.py
 !services/neurovox_pipeline/train.py
 data
 **/appsettings.json

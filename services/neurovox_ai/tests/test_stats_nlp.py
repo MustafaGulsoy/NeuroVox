@@ -68,3 +68,28 @@ def test_stats_endpoint_requires_key(tmp_path, monkeypatch):
     assert c.post("/stats/compare-many", json=body).status_code == 401
     r = c.post("/stats/compare-many", json=body, headers={"X-Api-Key": "secret"})
     assert r.status_code == 200 and r.json()["results"][0]["feature"] == "f"
+
+
+def test_llm_review_parse_and_disabled_on_cpu():
+    import llm_review
+    raw = 'Tamam: {"hatalar": [{"tur": "gramer", "metin": "x", "aciklama": "y"}, {"tur": "başka"}, "bozuk"]}'
+    assert [i["tur"] for i in llm_review._parse(raw)] == ["gramer"]
+    assert llm_review._parse("json yok") == []
+    assert llm_review.review("bu bir deneme metnidir ve yeterince uzundur ama cpu olduğu için çalışmaz") is None   # CPU host
+
+
+def test_predict_upload(tmp_path, monkeypatch):
+    import importlib, json, joblib
+    from fastapi.testclient import TestClient
+    from sklearn.linear_model import LogisticRegression
+    monkeypatch.setenv("NEUROVOX_AI_API_KEY", "secret")
+    import app
+    app = importlib.reload(app)
+    m = LogisticRegression().fit([[0, 0], [1, 1], [0, 1], [1, 0]], [0, 1, 1, 0])
+    joblib.dump(m, tmp_path / "m.joblib")
+    c = TestClient(app.app)
+    files = {"model": ("m.joblib", (tmp_path / "m.joblib").read_bytes())}
+    data = {"feature_order": json.dumps(["a", "b"]), "features": json.dumps({"a": 1.0, "b": 1.0})}
+    assert c.post("/predict-upload", files=files, data=data).status_code == 401
+    r = c.post("/predict-upload", files=files, data=data, headers={"X-Api-Key": "secret"})
+    assert r.status_code == 200 and r.json()["predicted_label"] in (0, 1)

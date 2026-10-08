@@ -50,9 +50,9 @@ namespace NeuroVox.WebApi.Controllers
                     ["a"] = a.Where(p => p.F.ContainsKey(f)).Select(p => p.F[f]).ToList(),
                     ["b"] = b.Where(p => p.F.ContainsKey(f)).Select(p => p.F[f]).ToList()
                 });
-            var results = await ai.CompareAsync(features);
+            var results = await ai.CompareAsync(customerId, features);
             return results is null
-                ? StatusCode(503, new { title = "İstatistik servisi (AI) çalışmıyor" })
+                ? StatusCode(503, new { title = "İstatistik için çevrimiçi AI sunucusu (Kaggle) yok" })
                 : Ok(new { by, groups, results = results.Value.GetProperty("results") });
         }
 
@@ -89,7 +89,8 @@ namespace NeuroVox.WebApi.Controllers
             {
                 (AnnotationCategory.Repetition, "repetition_candidates"), (AnnotationCategory.VagueExpression, "vague_expression_candidates"),
                 (AnnotationCategory.Anomia, "anomia_candidate_pauses"), (AnnotationCategory.Circumlocution, "circumlocution_candidates"),
-                (AnnotationCategory.MorphosyntacticIssue, "verbless_sentence_candidates")
+                (AnnotationCategory.MorphosyntacticIssue, "verbless_sentence_candidates"),
+                (AnnotationCategory.MorphosyntacticIssue, "llm_grammar_error_candidates"), (AnnotationCategory.SemanticError, "llm_semantic_error_candidates")
             };
             var aiVals = await db.FeatureMeasurements.AsNoTracking()
                 .Where(m => !m.RowIsDeleted && m.Layer == MeasurementLayer.AutomaticMeasurement && m.NumericValue != null && map.Select(x => x.Feature).Contains(m.FeatureName))
@@ -122,7 +123,7 @@ namespace NeuroVox.WebApi.Controllers
             if (!models.TryReadFeatureOrder(out var order)) return StatusCode(503, new { title = "Henüz eğitilmiş model yok" });
 
             var used = order.Where(visit.Features.ContainsKey).ToList();
-            var result = await ai.PredictAsync(visit.Features.Where(kv => order.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
+            var result = await ai.PredictAsync(customerId, visit.Features.Where(kv => order.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value));
             if (result is null) return StatusCode(503, new { title = "Model servisi yanıt vermedi veya yeterli özellik yok" });
             return Ok(new
             {

@@ -36,6 +36,7 @@
     <EmbeddedResource Include="..\services\neurovox_ai\app.py" LogicalName="ai/app.py" />
     <EmbeddedResource Include="..\services\neurovox_ai\turkish_nlp.py" LogicalName="ai/turkish_nlp.py" />
     <EmbeddedResource Include="..\services\neurovox_ai\stats.py" LogicalName="ai/stats.py" />
+    <EmbeddedResource Include="..\services\neurovox_ai\llm_review.py" LogicalName="ai/llm_review.py" />
     <EmbeddedResource Include="..\services\neurovox_pipeline\train.py" LogicalName="ai/train.py" />
     <EmbeddedResource Include="Services\kernel_template.py" LogicalName="ai/kernel_template.py" />
   </ItemGroup>

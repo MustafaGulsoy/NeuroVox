@@ -12,7 +12,7 @@ namespace NeuroVox.WebApi.Background
     // so work keeps moving; when nothing is online, jobs simply wait in the queue until a kernel registers.
     public class KaggleKeeper(IServiceScopeFactory scopes, AiHostPool pool, SecretProtector protector, IKaggleClient kaggle, IConfiguration config, ILogger<KaggleKeeper> log) : BackgroundService
     {
-        private static readonly TimeSpan StartWindow = TimeSpan.FromMinutes(15), ErrorBackoff = TimeSpan.FromMinutes(30), Diagnose = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan StartWindow = TimeSpan.FromMinutes(15), ErrorBackoff = TimeSpan.FromMinutes(30), Diagnose = TimeSpan.FromMinutes(5), HandoffAfter = TimeSpan.FromHours(7.9);
         private static readonly Regex QuotaText = new("quota|accelerator|gpu", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         protected override async Task ExecuteAsync(CancellationToken ct)
@@ -56,7 +56,9 @@ namespace NeuroVox.WebApi.Background
                               + await db.TrainingRuns.IgnoreQueryFilters().CountAsync(r => r.CustomerId == tenant.Key && !r.RowIsDeleted
                                   && (r.Status == AnalysisStatus.Queued || r.Status == AnalysisStatus.Running), ct);
                 var desired = Math.Min(tenant.Count(), pending == 0 ? (alwaysOn ? 1 : 0) : Math.Clamp((pending + 1) / 2, 1, maxParallel));
-                if (tenant.Count(a => AiHostPool.IsOnline(a) || Starting(a)) >= desired) continue;
+                // A kernel close to Kaggle's session limit no longer counts: its replacement starts on another account while it still serves.
+                var aging = tenant.Count(a => AiHostPool.IsOnline(a) && a.KernelStartedUtc is { } k && now - k > HandoffAfter);
+                if (tenant.Count(a => AiHostPool.IsOnline(a) || Starting(a)) - aging >= desired) continue;
 
                 var pick = tenant.Where(a => !AiHostPool.IsOnline(a) && !Starting(a)
                                              && (a.LastError is null || now - a.LastConnectAttemptUtc > ErrorBackoff))

@@ -1,4 +1,5 @@
 import hmac
+import json
 import math
 import os
 import shutil
@@ -13,6 +14,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadF
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+import llm_review
 import stats
 import turkish_nlp
 
@@ -244,6 +246,20 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
     info_u = information_unit_metrics(text, req.information_units, lex["total_words"])
     err_cand = turkish_nlp.error_candidates(text)   # None without a morphological analyzer
 
+    llm = llm_review.review(text)   # None on CPU hosts / when the model is unavailable
+    llm_m = []
+    if llm is not None:
+        per100 = 100.0 / max(lex["total_words"], 1)
+        llm_m = [
+            measurement("llm_grammar_error_candidates", llm["grammar"], unit="count"),
+            measurement("llm_semantic_error_candidates", llm["semantic"], unit="count"),
+            measurement("llm_grammar_errors_per100", round(llm["grammar"] * per100, 3), unit="per100words"),
+            measurement("llm_semantic_errors_per100", round(llm["semantic"] * per100, 3), unit="per100words"),
+            measurement("llm_review_details", None, text=json.dumps(llm["items"], ensure_ascii=False)[:4000]),
+        ]
+        for m in llm_m:
+            m["model_version"] = llm_review.MODEL_NAME
+
     measurement_list = [
         measurement("total_words", lex["total_words"], unit="count"),
         measurement("total_utterances", utterances, unit="count"),
@@ -276,6 +292,7 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         measurement("information_coverage", info_u["information_coverage"], unit="ratio"),
         measurement("information_density", info_u["information_density"]),
         *[measurement(k, v, unit="ratio" if k.endswith("_ratio") else "count") for k, v in (err_cand or {}).items()],
+        *llm_m,
         measurement("nlp_backend", 1.0 if turkish_nlp.ZEYREK_AVAILABLE else 0.0, text="zeyrek" if turkish_nlp.ZEYREK_AVAILABLE else "heuristic-fallback"),
     ]
 
@@ -349,14 +366,35 @@ def predict(req: PredictRequest):
         model, order = _load_model()
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail="Model artifact not found")
-    if not req.features or not all(math.isfinite(v) for v in req.features.values()):
+    return _predict(model, order, req.features)
+
+
+# Remote hosts (Kaggle) do not mount the model volume: the API sends the small model file with the request.
+@app.post("/predict-upload", dependencies=[Depends(require_key)])
+def predict_upload(model: UploadFile = File(...), feature_order: str = Form(...), features: str = Form(...)):
+    import json
+    import joblib
+    try:
+        feats = {k: float(v) for k, v in json.loads(features).items()}
+        order = json.loads(feature_order)
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "m.joblib"
+            path.write_bytes(model.file.read(50_000_000))
+            mdl = joblib.load(path)
+    except Exception:
+        raise HTTPException(status_code=422, detail="invalid model or features")
+    return _predict(mdl, order, feats)
+
+
+def _predict(model, order, features: dict):
+    if not features or not all(math.isfinite(v) for v in features.values()):
         raise HTTPException(status_code=422, detail="features must be finite numbers")
-    keys = order if order else sorted(req.features.keys())
-    present = sum(1 for k in keys if k in req.features)
+    keys = order if order else sorted(features.keys())
+    present = sum(1 for k in keys if k in features)
     if present < max(1, (len(keys) + 1) // 2):
         raise HTTPException(status_code=422, detail=f"only {present}/{len(keys)} model features supplied")
     # Missing values go in as NaN: the pipeline's imputer (fitted on training data) fills them, never a made-up 0.
-    X = np.array([[req.features.get(k, np.nan) for k in keys]], dtype=float)
+    X = np.array([[features.get(k, np.nan) for k in keys]], dtype=float)
     proba = None
     try:
         proba = float(model.predict_proba(X)[0][1])

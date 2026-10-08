@@ -139,6 +139,7 @@ namespace NeuroVox.WebApi.Services
                 ["app.py"] = Pack(Resource("ai/app.py")),
                 ["turkish_nlp.py"] = Pack(Resource("ai/turkish_nlp.py")),
                 ["stats.py"] = Pack(Resource("ai/stats.py")),
+                ["llm_review.py"] = Pack(Resource("ai/llm_review.py")),
                 ["train.py"] = Pack(Resource("ai/train.py"))
             });
             return Resource("ai/kernel_template.py")

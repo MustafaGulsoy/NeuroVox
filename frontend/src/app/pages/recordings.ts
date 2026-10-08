@@ -87,10 +87,20 @@ import { Empty, Modal, StatusBadge, fmtDateTime, fmtDuration } from '../shared/u
             </select>
           </label>
           <label class="field">Yönerge sürümü *<input class="input" name="i" [(ngModel)]="uf.instructionVersion" required /></label>
-          <label class="field wide">Ses dosyası * (wav, mp3, m4a, ogg, flac, webm · en fazla 200 MB)
-            <input class="input" name="f" type="file" accept=".wav,.mp3,.m4a,.ogg,.flac,.webm,audio/*" (change)="pickFile($event)" required />
-          </label>
-          @if (uf.duration) { <div class="muted wide">Algılanan süre: {{ dur(uf.duration) }}</div> }
+          <div class="field wide">Ses dosyası *
+            <label class="dropzone" [class.has-file]="file">
+              <input name="f" type="file" accept=".wav,.mp3,.m4a,.ogg,.flac,.webm,audio/*" (change)="pickFile($event)" required />
+              <app-icon [name]="file ? 'mic' : 'upload'" [size]="28" />
+              @if (file) {
+                <b>{{ file.name }}</b>
+                <span class="muted">{{ (file.size / 1048576).toFixed(1) }} MB@if (uf.duration) { · {{ dur(uf.duration) }} }</span>
+                <span class="muted">Değiştirmek için tıklayın veya başka dosya bırakın</span>
+              } @else {
+                <b>Dosyayı buraya sürükleyin veya seçmek için tıklayın</b>
+                <span class="muted">wav, mp3, m4a, ogg, flac, webm · en fazla 200 MB</span>
+              }
+            </label>
+          </div>
           @if (!stimuli().length) { <div class="notice warn wide">Önce <a routerLink="/research">Araştırma</a> sayfasında protokol ve uyarıcı ekleyin.</div> }
           @if (progress() !== null) { <div class="progress wide"><i [style.width.%]="progress()"></i></div> }
         </form>

@@ -25,12 +25,12 @@ namespace NeuroVox.Tests
             public Dictionary<string, double>? PredictInput;
             public Task<AnalysisResult?> AnalyzeAsync(AiHost h, string p, Guid c, Guid v, Guid r) => Task.FromResult<AnalysisResult?>(null);
             public Task<(byte[]? Zip, string? Error)> TrainAsync(AiHost h, string csv) => Task.FromResult<(byte[]?, string?)>((null, "n/a"));
-            public Task<JsonElement?> CompareAsync(Dictionary<string, Dictionary<string, List<double>>> f)
+            public Task<JsonElement?> CompareAsync(Guid cid, Dictionary<string, Dictionary<string, List<double>>> f)
             {
                 CompareInput = f;
                 return Task.FromResult<JsonElement?>(JsonDocument.Parse("{\"results\":[{\"feature\":\"ttr\",\"p\":0.01}]}").RootElement);
             }
-            public Task<JsonElement?> PredictAsync(Dictionary<string, double> f)
+            public Task<JsonElement?> PredictAsync(Guid cid, Dictionary<string, double> f)
             {
                 PredictInput = f;
                 return Task.FromResult<JsonElement?>(JsonDocument.Parse("{\"predicted_label\":1,\"model_estimated_risk\":0.8}").RootElement);

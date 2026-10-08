@@ -6,7 +6,8 @@ API_URL = "__API_URL__"
 CUSTOMER_ID = "__CUSTOMER_ID__"
 REGISTER_TOKEN = "__REGISTER_TOKEN__"
 IDLE_EXIT_MINUTES = __IDLE_MINUTES__
-MAX_HOURS = 9   # below Kaggle's session limit; the API's keeper starts the next kernel when this one ends
+MAX_HOURS = 8.8   # below Kaggle's 9h limit; the API's keeper starts a replacement (on another account from ~7.9h) when this one ends
+DRAIN_HOURS = 8   # past this the kernel exits as soon as it is idle, so a restart does not cut a running job
 
 W = "/kaggle/working/ai"
 os.makedirs(W, exist_ok=True)
@@ -20,7 +21,8 @@ except Exception:
     sys.exit("KAGGLE_INTERNET_OFF: kernel has no internet access (verify the phone number of this Kaggle account)")
 
 subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "faster-whisper==1.1.0", "zeyrek==0.1.3",
-                       "python-multipart==0.0.20", "uvicorn", "fastapi"])
+                       "python-multipart==0.0.20", "uvicorn", "fastapi", "joblib"])
+subprocess.call([sys.executable, "-m", "pip", "install", "-q", "-U", "transformers", "accelerate"])   # LLM grammar/semantic review (GPU only)
 for vad in ("webrtcvad-wheels", "webrtcvad"):   # optional: app.py falls back to no pause detection without it
     if subprocess.call([sys.executable, "-m", "pip", "install", "-q", vad]) == 0:
         break
@@ -70,7 +72,9 @@ def idle_seconds():
 
 started = time.time()
 while url and srv.poll() is None:
-    if not register() or (IDLE_EXIT_MINUTES > 0 and idle_seconds() > IDLE_EXIT_MINUTES * 60) or time.time() - started > MAX_HOURS * 3600:
+    age = time.time() - started
+    if (not register() or (IDLE_EXIT_MINUTES > 0 and idle_seconds() > IDLE_EXIT_MINUTES * 60) or age > MAX_HOURS * 3600
+            or (age > DRAIN_HOURS * 3600 and idle_seconds() > 90)):
         break
     time.sleep(60)
 tun.terminate()

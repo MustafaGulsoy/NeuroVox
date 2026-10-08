@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg gcc libc
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py turkish_nlp.py stats.py ./
+COPY app.py turkish_nlp.py stats.py llm_review.py ./
 
 ENV NEUROVOX_STT_MODEL=small \
     NEUROVOX_AUDIO_ROOT=/data/audio \
