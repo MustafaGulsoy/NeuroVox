@@ -11,6 +11,7 @@ import { IconComponent } from '../shared/icon.component';
       <aside class="nav" aria-label="Ana menü">
         <div class="brand"><app-icon name="wave" [size]="26" /><span>NeuroVox</span></div>
         <nav (click)="open.set(false)">
+          @if (!auth.isSystemAdmin()) {
           <small>Genel</small>
           <a routerLink="/" routerLinkActive="on" [routerLinkActiveOptions]="{ exact: true }"><app-icon name="dashboard" />Genel Bakış</a>
           <small>Çalışma</small>
@@ -19,6 +20,7 @@ import { IconComponent } from '../shared/icon.component';
           <a routerLink="/analysis" routerLinkActive="on"><app-icon name="chart" />Analiz</a>
           <small>Yönetim</small>
           <a routerLink="/research" routerLinkActive="on"><app-icon name="flask" />Araştırma</a>
+          }
           @if (auth.isInstitutionAdmin()) { <a routerLink="/users" routerLinkActive="on"><app-icon name="shield" />Kullanıcılar</a> }
           @if (auth.isSystemAdmin()) {
             <small>Sistem</small>
