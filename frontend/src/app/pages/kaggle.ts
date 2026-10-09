@@ -41,8 +41,8 @@ const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Ça
                 <td style="min-width:150px">
                   <div class="muted" style="font-size:.8rem">{{ a.gpuHoursUsed }} / {{ a.gpuHoursLimit }} sa{{ a.gpuExhausted ? ' · kota doldu' : '' }}</div>
                   <progress [value]="a.gpuHoursUsed" [max]="a.gpuHoursLimit" style="width:100%"></progress></td>
-                <td>{{ a.lastHeartbeatUtc ? (a.lastHeartbeatUtc + 'Z' | date: 'dd.MM HH:mm:ss') : '—' }}</td>
-                <td class="muted">@if (a.status === 'scheduled') { {{ a.resumeAtUtc + 'Z' | date: 'dd.MM HH:mm' }} 'de başlar } @else { {{ a.lastError || '' }} }
+                <td>{{ a.lastHeartbeatUtc ? (a.lastHeartbeatUtc | date: 'dd.MM HH:mm:ss') : '—' }}</td>
+                <td class="muted">@if (a.status === 'scheduled') { {{ a.resumeAtUtc | date: 'dd.MM HH:mm' }} 'de başlar } @else { {{ a.lastError || '' }} }
                   @if (a.status === 'online' && !a.upToDate) { <div>Eski sürüm; boşalınca otomatik yenilenir</div> }</td>
                 <td class="right"><div class="row" style="justify-content:flex-end;gap:6px">
                   <button class="btn sm" (click)="connect(a)" [disabled]="busy() === a.id || a.status === 'starting' || !a.enabled"><app-icon name="play" /> Şimdi bağlan</button>
@@ -64,7 +64,7 @@ const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Ça
           <div class="table-wrap"><table class="table">
             <thead><tr><th>Başlangıç</th><th>Durum</th><th>Örnek</th><th>Sonuç</th><th>Not</th></tr></thead>
             <tbody>@for (r of runs(); track r.id) {
-              <tr><td>{{ r.rowCreatedDate + 'Z' | date: 'dd.MM HH:mm' }}</td>
+              <tr><td>{{ r.rowCreatedDate | date: 'dd.MM HH:mm' }}</td>
                 <td><span class="badge" [class]="runCls(r)">{{ runLabel(r) }}</span></td>
                 <td>{{ r.sampleCount || '—' }}</td>
                 <td>@if (r.report) { <button class="btn sm" (click)="detail.set(r)"><app-icon name="eye" /> Ayrıntı</button> } @else { — }</td>
