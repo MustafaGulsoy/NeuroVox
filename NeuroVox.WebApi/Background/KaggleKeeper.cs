@@ -7,12 +7,13 @@ using NeuroVox.WebApi.Services;
 
 namespace NeuroVox.WebApi.Background
 {
-    // Keeps Kaggle capacity matched to the work: always one kernel up (NeuroVox:KaggleAlwaysOn), more when jobs pile up,
-    // and spreads kernels over the accounts with the most GPU hours left. Accounts out of GPU quota run CPU-only kernels,
+    // Keeps Kaggle capacity matched to the work: kernels run only on demand (queued work, or a stats/prediction request) and exit by themselves after
+    // NeuroVox:KaggleIdleMinutes (20) idle; more start when jobs pile up. Accounts take turns (least recently started first, GPU-capable first). Accounts out of GPU quota run CPU-only kernels,
     // so work keeps moving; when nothing is online, jobs simply wait in the queue until a kernel registers.
     public class KaggleKeeper(IServiceScopeFactory scopes, AiHostPool pool, SecretProtector protector, IKaggleClient kaggle, IConfiguration config, ILogger<KaggleKeeper> log) : BackgroundService
     {
-        private static readonly TimeSpan StartWindow = TimeSpan.FromMinutes(15), ErrorBackoff = TimeSpan.FromMinutes(30), Diagnose = TimeSpan.FromMinutes(5), HandoffAfter = TimeSpan.FromHours(7.9);
+        private static readonly TimeSpan StartWindow = TimeSpan.FromMinutes(15), ErrorBackoff = TimeSpan.FromMinutes(30), NeedsUserFix = TimeSpan.FromHours(6),   // only the account owner can fix a missing phone verification
+             Diagnose = TimeSpan.FromMinutes(5), HandoffAfter = TimeSpan.FromHours(7.9);
         private static readonly Regex QuotaText = new("quota|accelerator|gpu", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         protected override async Task ExecuteAsync(CancellationToken ct)
@@ -60,7 +61,7 @@ namespace NeuroVox.WebApi.Background
                 }
             await db.SaveChangesAsync(ct);
 
-            var alwaysOn = config.GetValue("NeuroVox:KaggleAlwaysOn", true);
+            var alwaysOn = config.GetValue("NeuroVox:KaggleAlwaysOn", false);
             var maxParallel = Math.Max(1, config.GetValue("NeuroVox:KaggleMaxParallel", 2));
 
             foreach (var tenant in accounts.Where(a => Allowed(a, now)).GroupBy(_ => 0))   // one system-wide pool shared by all institutions
@@ -69,14 +70,16 @@ namespace NeuroVox.WebApi.Background
                                   && (r.AnalysisStatus == AnalysisStatus.Queued || r.AnalysisStatus == AnalysisStatus.Running), ct)
                               + await db.TrainingRuns.IgnoreQueryFilters().CountAsync(r => !r.RowIsDeleted
                                   && (r.Status == AnalysisStatus.Queued || r.Status == AnalysisStatus.Running), ct);
-                var desired = Math.Min(tenant.Count(), pending == 0 ? (alwaysOn ? 1 : 0) : Math.Clamp((pending + 1) / 2, 1, maxParallel));
+                var demanded = now - pool.DemandUtc < TimeSpan.FromMinutes(3);   // a stats/prediction call found no host
+                var desired = Math.Min(tenant.Count(), pending == 0 ? (alwaysOn || demanded ? 1 : 0) : Math.Clamp((pending + 1) / 2, 1, maxParallel));
                 // A kernel close to Kaggle's session limit no longer counts: its replacement starts on another account while it still serves.
                 var aging = tenant.Count(a => AiHostPool.IsOnline(a) && a.KernelStartedUtc is { } k && now - k > HandoffAfter);
                 if (tenant.Count(a => AiHostPool.IsOnline(a) || Starting(a)) - aging >= desired) continue;
 
                 var pick = tenant.Where(a => !cooling.Contains(a.Id) && !AiHostPool.IsOnline(a) && !Starting(a)
-                                             && (a.LastError is null || now - a.LastConnectAttemptUtc > ErrorBackoff))
-                    .OrderByDescending(pool.RemainingGpuSeconds).ThenBy(_ => Random.Shared.Next()).FirstOrDefault();
+                                             && (a.LastError is null || now - a.LastConnectAttemptUtc > (a.LastError.Contains("telefon doğrulaması") ? NeedsUserFix : ErrorBackoff)))
+                    // Rotation: accounts that can still use the GPU first, and among them the one started longest ago.
+                    .OrderByDescending(pool.ShouldUseGpu).ThenBy(a => a.LastConnectAttemptUtc ?? DateTime.MinValue).FirstOrDefault();
                 if (pick is null) continue;
 
                 var gpu = pool.ShouldUseGpu(pick);

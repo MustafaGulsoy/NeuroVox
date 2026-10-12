@@ -58,7 +58,7 @@ namespace NeuroVox.WebApi.Controllers
             return Ok(new
             {
                 secretsEnabled = protector.Enabled,
-                alwaysOn = config.GetValue("NeuroVox:KaggleAlwaysOn", true),
+                alwaysOn = config.GetValue("NeuroVox:KaggleAlwaysOn", false),
                 queue = new { recordings = queued, training },
                 accounts = list.Select(View)
             });

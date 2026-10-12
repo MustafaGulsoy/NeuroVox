@@ -131,7 +131,7 @@ namespace NeuroVox.Tests
         }
 
         [Fact]
-        public async Task Keeper_KeepsOneKernelUp_SpreadsByQuota_AndFallsBackToCpu()
+        public async Task Keeper_StartsOnDemandOnly_RotatesAccounts_AndFallsBackToCpu()
         {
             var tenant = Guid.NewGuid();
             var admin = Client(tenant, "NeuroVoxAdmin");
@@ -151,9 +151,14 @@ namespace NeuroVox.Tests
             using var sc = _f.Services.CreateScope();
             var keeper = ActivatorUtilities.CreateInstance<NeuroVox.WebApi.Background.KaggleKeeper>(_f.Services);
 
-            // ann has used 29h of 30h GPU, bob none: the next kernel goes to bob, on GPU.
-            await Mutate(ids[0], a => { a.QuotaWeekStartUtc = keeper_week(); a.GpuSecondsThisWeek = 29 * 3600; });
+            // ann has used the GPU quota, bob none. Idle system: nothing is started.
+            await Mutate(ids[0], a => { a.QuotaWeekStartUtc = keeper_week(); a.GpuSecondsThisWeek = 31 * 3600; });
             await Mutate(ids[1], a => a.QuotaWeekStartUtc = keeper_week());
+            _f.Kaggle.LastCode = null;
+            await keeper.TickAsync(default);
+            Assert.Null(_f.Kaggle.LastCode);
+            // A request finds no host -> one kernel starts, on bob's GPU.
+            _f.Services.GetRequiredService<AiHostPool>().Demand();
             await keeper.TickAsync(default);
             Assert.True(_f.Kaggle.LastGpu);
             Assert.Contains("api.test", _f.Kaggle.LastCode!);
@@ -162,10 +167,12 @@ namespace NeuroVox.Tests
             _f.Kaggle.LastCode = null;
             await keeper.TickAsync(default);
             Assert.Null(_f.Kaggle.LastCode);
-            await Mutate(ids[1], a => { a.LastConnectAttemptUtc = DateTime.UtcNow.AddHours(-10); a.GpuSecondsThisWeek = 31 * 3600; });
-            await Mutate(ids[0], a => { a.LastConnectAttemptUtc = DateTime.UtcNow.AddHours(-10); a.GpuSecondsThisWeek = 31 * 3600; });
+            // Both out of GPU quota and idle: the one started longest ago (ann) takes the turn, CPU-only.
+            await Mutate(ids[1], a => { a.LastConnectAttemptUtc = DateTime.UtcNow.AddHours(-10); a.LastHeartbeatUtc = null; a.GpuSecondsThisWeek = 31 * 3600; });
+            await Mutate(ids[0], a => { a.LastConnectAttemptUtc = DateTime.UtcNow.AddHours(-20); a.GpuSecondsThisWeek = 31 * 3600; });
             await keeper.TickAsync(default);
             Assert.False(_f.Kaggle.LastGpu);
+            await Mutate(ids[0], a => Assert.True(DateTime.UtcNow - a.LastConnectAttemptUtc < TimeSpan.FromMinutes(1)));
         }
 
         private DateTime keeper_week() => _f.Services.GetRequiredService<AiHostPool>().WeekStart(DateTime.UtcNow);
@@ -219,7 +226,10 @@ namespace NeuroVox.Tests
             Assert.Contains("scheduled", await admin.GetStringAsync("/api/KaggleAccounts"));
             await Row(a => a.ResumeAtUtc = DateTime.UtcNow.AddMinutes(-1));
             await keeper.TickAsync(default);
-            Assert.NotNull(_f.Kaggle.LastCode);   // always-on: the schedule passed, the kernel starts
+            Assert.Null(_f.Kaggle.LastCode);   // schedule passed but nobody needs a kernel
+            _f.Services.GetRequiredService<AiHostPool>().Demand();
+            await keeper.TickAsync(default);
+            Assert.NotNull(_f.Kaggle.LastCode);   // on demand: the kernel starts
 
             // Online but running old code and idle: revoked, then started again with the current version.
             await Row(a => { a.PublicUrl = "https://a-b.trycloudflare.com"; a.LastHeartbeatUtc = DateTime.UtcNow; a.KernelVersion = "old"; });

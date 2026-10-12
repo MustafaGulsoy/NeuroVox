@@ -124,7 +124,7 @@ const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Ça
 export class KaggleAccountsPage implements OnInit {
   private api = inject(ApiService);
   private toast = inject(ToastService);
-  ov = signal<KaggleOverview>({ secretsEnabled: true, alwaysOn: true, queue: { recordings: 0, training: 0 }, accounts: [] });
+  ov = signal<KaggleOverview>({ secretsEnabled: true, alwaysOn: false, queue: { recordings: 0, training: 0 }, accounts: [] });
   runs = signal<TrainingRun[]>([]);
   detail = signal<TrainingRun | null>(null);
   adding = signal(false); saving = signal(false); busy = signal(''); del = signal<KaggleAccount | null>(null);

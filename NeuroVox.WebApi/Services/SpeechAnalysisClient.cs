@@ -75,7 +75,12 @@ namespace NeuroVox.WebApi.Services
         }
 
         // Light calls (numbers only) go to any online host of the tenant -- no exclusive lease needed.
-        private async Task<AiHost?> AnyHostAsync(Guid customerId) => (await pool.OnlineHostsAsync(customerId, CancellationToken.None)).FirstOrDefault();
+        private async Task<AiHost?> AnyHostAsync(Guid customerId)
+        {
+            var host = (await pool.OnlineHostsAsync(customerId, CancellationToken.None)).FirstOrDefault();
+            if (host is null) pool.Demand();   // kernels only run on demand: ask the keeper to start one (the caller retries in a few minutes)
+            return host;
+        }
 
         public async Task<JsonElement?> CompareAsync(Guid customerId, Dictionary<string, Dictionary<string, List<double>>> features)
         {

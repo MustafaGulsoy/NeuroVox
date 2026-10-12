@@ -191,23 +191,26 @@ def measurement(name: str, value: float | None, text: str | None = None, unit: s
 
 
 _last_work = time.monotonic()
+_inflight = 0
 
 
 @app.middleware("http")
 async def _track_work(request, call_next):
-    global _last_work
-    if request.url.path != "/health":
+    global _last_work, _inflight
+    if request.url.path == "/health":
+        return await call_next(request)
+    _inflight += 1
+    try:
+        return await call_next(request)
+    finally:
+        _inflight -= 1
         _last_work = time.monotonic()
-    response = await call_next(request)
-    if request.url.path != "/health":
-        _last_work = time.monotonic()
-    return response
 
 
 @app.get("/health")
 def health():
     # idle_seconds lets a remote host (Kaggle) shut itself down when nobody uses it.
-    return {"status": "ok", "model": MODEL_SIZE, "idle_seconds": int(time.monotonic() - _last_work)}
+    return {"status": "ok", "model": MODEL_SIZE, "idle_seconds": 0 if _inflight else int(time.monotonic() - _last_work)}   # a running job is never idle
 
 
 @app.post("/analyze", dependencies=[Depends(require_key)])

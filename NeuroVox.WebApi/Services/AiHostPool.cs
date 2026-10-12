@@ -66,6 +66,10 @@ namespace NeuroVox.WebApi.Services
                 .ToList();
         }
 
+        /// <summary>Set when a request needed a host and none was online; the keeper starts a kernel for it.</summary>
+        public DateTime DemandUtc { get; private set; }
+        public void Demand() => DemandUtc = DateTime.UtcNow;
+
         public bool IsBusy(Guid accountId) { lock (_busy) return _busy.Contains(accountId.ToString()); }
 
         /// <summary>Revokes the running kernel: its next heartbeat is answered 410 and it exits (Kaggle has no stop API).</summary>
@@ -107,7 +111,7 @@ namespace NeuroVox.WebApi.Services
             var registerToken = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             var aiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             // 0 = never exit when idle (always-on); the keeper decides when kernels are needed.
-            var idle = config.GetValue("NeuroVox:KaggleAlwaysOn", true) ? 0 : config.GetValue("NeuroVox:KaggleIdleMinutes", 45);
+            var idle = config.GetValue("NeuroVox:KaggleAlwaysOn", false) ? 0 : config.GetValue("NeuroVox:KaggleIdleMinutes", 20);
             var code = BuildKernel(apiUrl.TrimEnd('/'), a.CustomerId, registerToken, aiKey, idle);
 
             a.RegisterTokenHash = Hash(registerToken);   // set before the push: the kernel may call back within seconds
