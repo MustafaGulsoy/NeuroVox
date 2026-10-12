@@ -13,7 +13,7 @@ namespace NeuroVox.WebApi.Background
     public class KaggleKeeper(IServiceScopeFactory scopes, AiHostPool pool, SecretProtector protector, IKaggleClient kaggle, IConfiguration config, ILogger<KaggleKeeper> log) : BackgroundService
     {
         private static readonly TimeSpan StartWindow = TimeSpan.FromMinutes(15), ErrorBackoff = TimeSpan.FromMinutes(30), NeedsUserFix = TimeSpan.FromHours(6),   // only the account owner can fix a missing phone verification
-             Diagnose = TimeSpan.FromMinutes(5), HandoffAfter = TimeSpan.FromHours(7.9);
+             Diagnose = TimeSpan.FromMinutes(2), HandoffAfter = TimeSpan.FromHours(7.9);
         private static readonly Regex QuotaText = new("quota|accelerator|gpu", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         protected override async Task ExecuteAsync(CancellationToken ct)

@@ -34,6 +34,7 @@ export const routes: Routes = [
       { path: 'recordings', canActivate: [clinicalGuard], loadComponent: () => import('./pages/recordings').then(m => m.RecordingsPage), title: 'Kayıtlar · NeuroVox' },
       { path: 'annotate/:id', canActivate: [clinicalGuard], loadComponent: () => import('./pages/annotate').then(m => m.AnnotatePage), title: 'Anotasyon · NeuroVox' },
       { path: 'analysis', canActivate: [clinicalGuard], loadComponent: () => import('./pages/analysis').then(m => m.AnalysisPage), title: 'Analiz · NeuroVox' },
+      { path: 'training', canActivate: [clinicalGuard], loadComponent: () => import('./pages/training').then(m => m.TrainingPage), title: 'Model · NeuroVox' },
       { path: 'research', canActivate: [clinicalGuard], loadComponent: () => import('./pages/research').then(m => m.ResearchPage), title: 'Araştırma · NeuroVox' },
       { path: 'kaggle', canActivate: [adminGuard('system')], loadComponent: () => import('./pages/kaggle').then(m => m.KaggleAccountsPage), title: 'Kaggle · NeuroVox' },
       { path: 'institutions', canActivate: [adminGuard('system')], loadComponent: () => import('./pages/institutions').then(m => m.InstitutionsPage), title: 'Kurumlar · NeuroVox' },

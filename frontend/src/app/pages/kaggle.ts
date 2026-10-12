@@ -2,14 +2,13 @@ import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
-import { KaggleAccount, KaggleOverview, TrainingRun } from '../core/models';
+import { KaggleAccount, KaggleOverview } from '../core/models';
 import { ToastService } from '../core/toast.service';
 import { IconComponent } from '../shared/icon.component';
 import { Empty, Modal } from '../shared/ui';
 
 const LABEL: Record<string, string> = { online: 'Çevrimiçi', starting: 'Başlatılıyor', offline: 'Kapalı', error: 'Hata', disabled: 'Devre dışı', scheduled: 'Zamanlandı' };
 const CLS: Record<string, string> = { online: 'ok', starting: 'warn', offline: '', error: 'err', disabled: '', scheduled: 'info' };
-const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Çalışıyor', 'info'], 3: ['Tamamlandı', 'ok'], 4: ['Başarısız', 'err'] };
 
 @Component({
   selector: 'app-kaggle',
@@ -17,7 +16,7 @@ const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Ça
   template: `
     <div class="page">
       <div class="page-head"><div><h1>Kaggle hesapları</h1>
-        <p>Konuşma analizi ve model eğitimi Kaggle’da çalışır. Sistem hesaplardan birini sürekli açık tutar, iş çoğalırsa diğerlerini de açar; GPU saati en çok kalan hesap önce kullanılır, GPU kotası bitenler CPU ile devam eder.</p></div>
+        <p>Konuşma analizi ve model eğitimi Kaggle’da çalışır. Çekirdekler yalnızca iş geldiğinde açılır ve iş bittikten 20 dakika sonra kendiliğinden kapanır; iş çoğalırsa ikinci hesap da açılır. Hesaplar sırayla kullanılır (GPU hakkı olanlar önce), GPU kotası bitenler CPU ile devam eder.</p></div>
         <button class="btn primary" (click)="open()" [disabled]="!ov().secretsEnabled"><app-icon name="plus" /> Hesap ekle</button></div>
 
       @if (!ov().secretsEnabled) { <div class="notice warn" style="margin-bottom:16px">Sunucuda <code>NeuroVox__SecretKey</code> tanımlı değil; token saklanamaz.</div> }
@@ -55,43 +54,7 @@ const RUN: Record<number, [string, string]> = { 1: ['Sırada', 'warn'], 2: ['Ça
           </table></div>
         }
       </div>
-
-      <div class="card flush">
-        <header style="padding:16px 20px 0"><h2>Model eğitimi</h2>
-          <button class="btn sm primary" (click)="train()" [disabled]="training() || !ov().accounts.length"><app-icon name="play" /> Eğitimi başlat</button></header>
-        <p class="muted" style="padding:0 20px">Klinik sonucu kayıtlı ziyaretlerden (en az 10 satır ve 2 sınıf) beş model eğitilir; katılımcılar eğitim/test arasında bölünmez. Kernel çevrimiçi olana kadar iş sırada bekler.</p>
-        @if (!runs().length) { <app-empty icon="chart" text="Henüz eğitim yapılmadı" /> } @else {
-          <div class="table-wrap"><table class="table">
-            <thead><tr><th>Başlangıç</th><th>Durum</th><th>Örnek</th><th>Sonuç</th><th>Not</th></tr></thead>
-            <tbody>@for (r of runs(); track r.id) {
-              <tr><td>{{ r.rowCreatedDate | date: 'dd.MM HH:mm' }}</td>
-                <td><span class="badge" [class]="runCls(r)">{{ runLabel(r) }}</span></td>
-                <td>{{ r.sampleCount || '—' }}</td>
-                <td>@if (r.report) { <button class="btn sm" (click)="detail.set(r)"><app-icon name="eye" /> Ayrıntı</button> } @else { — }</td>
-                <td class="muted">{{ r.error || '' }}</td></tr>
-            }</tbody>
-          </table></div>
-        }
-      </div>
     </div>
-
-    @if (detail(); as r) {
-      <app-modal title="Eğitim sonucu" (close)="detail.set(null)" [wide]="true">
-        <p class="muted">{{ r.report!.n_participants }} katılımcı · {{ r.report!.n_rows }} ziyaret · {{ r.report!.folds }} katlı, katılımcı gruplu çapraz doğrulama (dışarıda bırakılan tahminler). Artefakt seti: <b>{{ setLabel(r.report!.primary_set) }}</b>.</p>
-        @for (s of sets(r); track s[0]) {
-          <h3 style="margin:14px 0 6px">{{ setLabel(s[0]) }} <span class="muted" style="font-weight:400">({{ s[1].features.length }} özellik)</span></h3>
-          <div class="table-wrap"><table class="table">
-            <thead><tr><th>Model</th><th>AUC (%95 GA)</th><th>Duyarlılık</th><th>Özgüllük</th><th>Doğruluk</th></tr></thead>
-            <tbody>@for (m of entries(s[1].models); track m[0]) {
-              <tr><td>{{ m[0] }}</td><td><b>{{ m[1].roc_auc }}</b> @if (m[1].roc_auc_ci95) { <span class="muted">({{ m[1].roc_auc_ci95![0] }}–{{ m[1].roc_auc_ci95![1] }})</span> }</td>
-                <td>{{ m[1].sensitivity ?? '—' }}</td><td>{{ m[1].specificity ?? '—' }}</td><td>{{ m[1].accuracy }}</td></tr>
-            }</tbody>
-          </table></div>
-        }
-        <div class="notice" style="margin-top:12px">{{ r.report!.note }}</div>
-        <ng-container footer><button class="btn primary" (click)="detail.set(null)">Kapat</button></ng-container>
-      </app-modal>
-    }
 
     @if (adding()) {
       <app-modal title="Kaggle hesabı ekle" (close)="adding.set(false)">
@@ -125,8 +88,6 @@ export class KaggleAccountsPage implements OnInit {
   private api = inject(ApiService);
   private toast = inject(ToastService);
   ov = signal<KaggleOverview>({ secretsEnabled: true, alwaysOn: false, queue: { recordings: 0, training: 0 }, accounts: [] });
-  runs = signal<TrainingRun[]>([]);
-  detail = signal<TrainingRun | null>(null);
   adding = signal(false); saving = signal(false); busy = signal(''); del = signal<KaggleAccount | null>(null);
   f = { username: '', apiKey: '' };
   schedule = signal<KaggleAccount | null>(null); at = '';
@@ -139,23 +100,16 @@ export class KaggleAccountsPage implements OnInit {
   ngOnInit() { this.load(); }
   load() {
     this.api.kaggleAccounts().subscribe({ next: r => this.ov.set(r), error: e => this.toast.err(e) });
-    this.api.trainingRuns().subscribe({ next: r => this.runs.set(r), error: () => { /* shown by the accounts call */ } });
   }
 
   online = () => this.ov().accounts.filter(a => a.status === 'online').length;
   gpuLeft = () => Math.max(0, this.ov().accounts.reduce((s, a) => s + a.gpuHoursLimit - a.gpuHoursUsed, 0)).toFixed(1);
-  training = () => this.runs().some(r => r.status === 1 || r.status === 2);
-  runLabel = (r: TrainingRun) => RUN[r.status]?.[0] ?? '—';
-  runCls = (r: TrainingRun) => RUN[r.status]?.[1] ?? '';
-  sets = (r: TrainingRun) => Object.entries(r.report?.feature_sets ?? {});
-  entries = <T,>(o: Record<string, T>) => Object.entries(o);
-  setLabel = (n: string) => ({ speech: 'Yalnız konuşma', cognitive: 'Yalnız ACE-III', combined: 'Konuşma + ACE-III' } as Record<string, string>)[n] ?? n;
 
   open() { this.f = { username: '', apiKey: '' }; this.adding.set(true); }
   add() {
     this.saving.set(true);
     this.api.addKaggleAccount(this.f.username.trim(), this.f.apiKey.trim()).subscribe({
-      next: () => { this.saving.set(false); this.f.apiKey = ''; this.adding.set(false); this.toast.ok('Hesap eklendi; kernel birazdan kendiliğinden başlatılır'); this.load(); },
+      next: () => { this.saving.set(false); this.f.apiKey = ''; this.adding.set(false); this.toast.ok('Hesap eklendi; iş geldiğinde kernel kendiliğinden açılır'); this.load(); },
       error: e => { this.saving.set(false); this.toast.err(e); }
     });
   }
@@ -179,8 +133,5 @@ export class KaggleAccountsPage implements OnInit {
   }
   remove() {
     this.api.deleteKaggle(this.del()!.id).subscribe({ next: () => { this.del.set(null); this.toast.ok('Hesap silindi'); this.load(); }, error: e => this.toast.err(e) });
-  }
-  train() {
-    this.api.startTraining().subscribe({ next: () => { this.toast.ok('Eğitim sıraya alındı'); this.load(); }, error: e => this.toast.err(e) });
   }
 }

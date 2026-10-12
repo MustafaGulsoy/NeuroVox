@@ -18,6 +18,7 @@ import { IconComponent } from '../shared/icon.component';
           <a routerLink="/participants" routerLinkActive="on"><app-icon name="users" />Katılımcılar</a>
           <a routerLink="/recordings" routerLinkActive="on"><app-icon name="mic" />Kayıtlar</a>
           <a routerLink="/analysis" routerLinkActive="on"><app-icon name="chart" />Analiz</a>
+          <a routerLink="/training" routerLinkActive="on"><app-icon name="flask" />Model</a>
           <small>Yönetim</small>
           <a routerLink="/research" routerLinkActive="on"><app-icon name="flask" />Araştırma</a>
           }
