@@ -12,6 +12,7 @@ using BaseAuth.Application.Features.Queries.AppUser.GetRolesToUser;
 using BaseAuth.Application.Features.Queries.Role.GetRoles;
 using BaseAuth.Domain.Enums;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -29,6 +30,12 @@ namespace NeuroVox.WebApi.Controllers
         {
             if (HttpContext.Items["customerid"] is Guid customerId)
             {
+                // The user's institution is found from the username, so nobody has to pick one: the chosen/default institution
+                // wins when it has this user, otherwise a username that exists in exactly one institution decides.
+                var key = (request.UsernameOrEmail ?? "").Trim().ToUpperInvariant();
+                var homes = await db.Users.AsNoTracking().Where(u => !u.RowIsDeleted && (u.NormalizedUserName == key || u.NormalizedEmail == key))
+                    .Select(u => u.CustomerId).Distinct().Take(2).ToListAsync();
+                if (!homes.Contains(customerId) && homes.Count == 1) { customerId = homes[0]; HttpContext.Items["customerid"] = customerId; }
                 request.CustomerId = customerId;
                 // A deactivated institution or an expired subscription cannot sign in.
                 if (!await NeuroVox.WebApi.Services.Tenants.IsOpenAsync(db, customerId))

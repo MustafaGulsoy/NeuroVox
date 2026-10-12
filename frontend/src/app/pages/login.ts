@@ -29,7 +29,7 @@ import { IconComponent } from '../shared/icon.component';
             <h2>Giriş yap</h2>
             <p class="muted">Hesabınızla devam edin.</p>
           </div>
-          @if (institutions().length > 1) {
+          @if (institutions().length > 1 && error()) {
             <label class="field">Kurum
               <select class="input" name="t" [ngModel]="auth.tenantId()" (ngModelChange)="auth.chooseTenant($event)">
                 @for (i of institutions(); track i.id) { <option [value]="i.id">{{ i.name }}</option> }

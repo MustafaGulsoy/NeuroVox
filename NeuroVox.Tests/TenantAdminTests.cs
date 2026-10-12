@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -180,6 +180,13 @@ namespace NeuroVox.Tests
                 Assert.Equal(new[] { TenantRoles.Admin }, roleNames);
                 Assert.Equal(2, await db.Roles.CountAsync(r => r.CustomerId == id));   // KurumAdmin + Doktor
             }
+
+            // Sign-in finds the institution from the username: the caller sends the wrong (default) institution and still gets in.
+            var anon = _f.CreateClient();
+            anon.DefaultRequestHeaders.Add("customerid", _f.SystemTenant.ToString());
+            var login = await anon.PostAsJsonAsync("/api/Auth/Login", new { usernameOrEmail = "ayse.c", password = "Abc12345!x" });
+            Assert.True(login.IsSuccessStatusCode, await login.Content.ReadAsStringAsync());
+            Assert.False((await anon.PostAsJsonAsync("/api/Auth/Login", new { usernameOrEmail = "ayse.c", password = "wrong-password" })).IsSuccessStatusCode);
 
             var upd = await sys.PutAsJsonAsync($"/api/Institutions/{id}", new { name = "Üniversite C", isActive = false });
             Assert.Equal(HttpStatusCode.OK, upd.StatusCode);
