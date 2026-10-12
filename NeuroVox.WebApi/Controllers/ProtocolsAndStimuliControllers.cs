@@ -65,6 +65,9 @@ namespace NeuroVox.WebApi.Controllers
         {
             var p = read.GetWhere(x => x.Id == id && !x.RowIsDeleted).FirstOrDefault();
             if (p is null) return NotFound();
+            // The approval number is entered once and then locked.
+            if (!string.IsNullOrWhiteSpace(p.EthicsApprovalNumber) && p.EthicsApprovalNumber != r.EthicsApprovalNumber.Trim())
+                return Conflict(new { title = "Onay numarası bir kez girilir ve değiştirilemez." });
             p.EthicsCommittee = r.EthicsCommittee; p.EthicsApprovalNumber = r.EthicsApprovalNumber.Trim(); p.EthicsApprovalDate = r.EthicsApprovalDate;
             await write.SaveAsync();
             return NoContent();

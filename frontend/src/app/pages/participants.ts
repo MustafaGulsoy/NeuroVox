@@ -52,7 +52,7 @@ import { Empty, Modal, fmtDate } from '../shared/ui';
     @if (open()) {
       <app-modal title="Yeni katılımcı" (close)="open.set(false)">
         <form id="pf" (ngSubmit)="create()" class="form-grid">
-          <label class="field">Katılımcı kodu *<input class="input" name="c" [(ngModel)]="f.participantCode" required maxlength="64" /></label>
+          <div class="notice wide">Kayıt numarası (K-0001, K-0002 …) kaydedilirken sistem tarafından otomatik atanır ve değiştirilemez.</div>
           <label class="field">Cinsiyet
             <select class="input" name="s" [(ngModel)]="f.sex"><option value="">Belirtilmedi</option><option>Kadın</option><option>Erkek</option><option>Diğer</option></select>
           </label>
@@ -63,7 +63,7 @@ import { Empty, Modal, fmtDate } from '../shared/ui';
         </form>
         <ng-container footer>
           <button class="btn" type="button" (click)="open.set(false)">Vazgeç</button>
-          <button class="btn primary" type="submit" form="pf" [disabled]="!f.participantCode.trim() || busy()">Kaydet</button>
+          <button class="btn primary" type="submit" form="pf" [disabled]="busy()">Kaydet</button>
         </ng-container>
       </app-modal>
     }`

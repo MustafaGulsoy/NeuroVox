@@ -30,7 +30,7 @@ type Tab = 'protocols' | 'stimuli' | 'features';
                 <tr><td><b>{{ p.name }}</b><br><span class="muted">{{ p.description }}</span></td><td>v{{ p.version }}</td><td>{{ p.targetRecordingSecondsMin }}–{{ p.targetRecordingSecondsMax }} sn</td><td>{{ p.codingManualVersion }}</td>
                   <td>@if (p.isBlindedAnnotationEnabled) { <span class="badge ok">Açık</span> } @else { <span class="badge">Kapalı</span> }</td>
                   <td>@if (p.ethicsApprovalNumber) { <span class="badge ok">{{ p.ethicsApprovalNumber }}</span> } @else { <span class="badge warn">Yok · kayıt alınamaz</span> }
-                    <button class="btn sm" style="margin-left:6px" (click)="openEthics(p)"><app-icon name="edit" /></button></td></tr>
+                    @if (!p.ethicsApprovalNumber) { <button class="btn sm" style="margin-left:6px" (click)="openEthics(p)"><app-icon name="edit" /></button> }</td></tr>
               }</tbody>
             </table></div>
           }

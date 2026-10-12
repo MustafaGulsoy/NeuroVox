@@ -125,7 +125,9 @@ namespace NeuroVox.Tests
             var stimulus = await Id(await a.PostAsJsonAsync("/api/Stimuli", new { stimulusId = "S", version = "1", protocolId = protocol }));
             var noConsent = await Id(await a.PostAsJsonAsync("/api/Participants", new { participantCode = "NC" }));
             var consented = await Id(await a.PostAsJsonAsync("/api/Participants", new { participantCode = "C1", consentVersion = "v1" }));
-            Assert.Equal(HttpStatusCode.Conflict, (await a.PostAsJsonAsync("/api/Participants", new { participantCode = "C1" })).StatusCode);
+            // Codes are system-assigned and sequential; a client-sent code is ignored.
+            var codes = (await a.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/Participants")).EnumerateArray().Select(x => x.GetProperty("participantCode").GetString()).OrderBy(x => x).ToArray();
+            Assert.Equal(new[] { "K-0001", "K-0002" }, codes);
 
             var visitNc = await Id(await a.PostAsJsonAsync("/api/StudyVisits", new { participantId = noConsent, protocolId = protocol, visitType = 0 }));
             var visit = await Id(await a.PostAsJsonAsync("/api/StudyVisits", new { participantId = consented, protocolId = protocol, visitType = 0 }));

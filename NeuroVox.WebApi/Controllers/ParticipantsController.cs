@@ -32,10 +32,12 @@ namespace NeuroVox.WebApi.Controllers
             _storage = storage;
         }
 
+        private static readonly SemaphoreSlim CodeLock = new(1, 1);   // ponytail: one API instance; use a DB sequence when scaling out
+
         public class CreateRequest
         {
             [Required, StringLength(64, MinimumLength = 1)]
-            public string ParticipantCode { get; set; } = string.Empty;
+            public string ParticipantCode { get; set; } = string.Empty;   // ignored: the code is system-assigned
             public DateOnly? DateOfBirth { get; set; }
             public string? Sex { get; set; }
             public string? Notes { get; set; }
@@ -67,13 +69,18 @@ namespace NeuroVox.WebApi.Controllers
         {
             if (HttpContext.Items.TryGetValue("customerid", out var cid) && cid is Guid customerId)
             {
-                if (_read.GetWhere(p => p.ParticipantCode == request.ParticipantCode, tracking: false).Any())
-                    return Conflict(new { title = "participantCode already exists" });
+                // The registration code is assigned by the system (K-0001, K-0002, ...) and cannot be chosen or edited; deleted
+                // participants still count, so a code is never reused.
+                await CodeLock.WaitAsync();
+                try
+                {
+                var next = (await _db.Participants.IgnoreQueryFilters().Where(p => p.CustomerId == customerId).Select(p => p.ParticipantCode).ToListAsync())
+                    .Select(c => c.StartsWith("K-") && int.TryParse(c.AsSpan(2), out var n) ? n : 0).DefaultIfEmpty(0).Max() + 1;
                 var entity = new Participant
                 {
                     Id = Guid.NewGuid(),
                     CustomerId = customerId,
-                    ParticipantCode = request.ParticipantCode,
+                    ParticipantCode = $"K-{next:D4}",
                     DateOfBirth = request.DateOfBirth,
                     Sex = request.Sex,
                     Notes = request.Notes,
@@ -84,6 +91,8 @@ namespace NeuroVox.WebApi.Controllers
                 await _write.AddAsync(entity);
                 await _write.SaveAsync();
                 return Ok(new { entity.Id, entity.ParticipantCode });
+                }
+                finally { CodeLock.Release(); }
             }
             return BadRequest(new { title = "customerid missing" });
         }
