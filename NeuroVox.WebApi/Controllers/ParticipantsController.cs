@@ -36,8 +36,6 @@ namespace NeuroVox.WebApi.Controllers
 
         public class CreateRequest
         {
-            [Required, StringLength(64, MinimumLength = 1)]
-            public string ParticipantCode { get; set; } = string.Empty;   // ignored: the code is system-assigned
             public DateOnly? DateOfBirth { get; set; }
             public string? Sex { get; set; }
             public string? Notes { get; set; }
@@ -113,7 +111,7 @@ namespace NeuroVox.WebApi.Controllers
         }
 
         // Records the inclusion/exclusion assessment; the result (IsEligible) gates recording uploads.
-        [HttpPut("{id}/eligibility")]
+        [HttpPost("{id}/eligibility")]
         [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Post Participants", ActionType = ActionType.Writing)]
         public async Task<IActionResult> SetEligibility(Guid id, [FromBody] EligibilityRequest r)
         {

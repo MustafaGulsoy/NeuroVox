@@ -107,8 +107,14 @@ def information_unit_metrics(text: str, units: list[str] | None, total_words: in
 
 
 def decode_audio_16k(path: str) -> np.ndarray:
-    from faster_whisper.audio import decode_audio
-    return decode_audio(path, sampling_rate=16000)
+    try:
+        from faster_whisper.audio import decode_audio
+        return decode_audio(path, sampling_rate=16000)
+    except Exception:   # PyAV/faster-whisper version mismatch on some hosts: decode with ffmpeg instead
+        import subprocess
+        out = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-f", "f32le", "-ac", "1", "-ar", "16000", "-"],
+                             capture_output=True, check=True, timeout=300).stdout
+        return np.frombuffer(out, dtype=np.float32).copy()
 
 
 def vad_pause_stats(audio: np.ndarray, sample_rate: int = 16000) -> dict[str, float]:
@@ -215,7 +221,7 @@ def analyze_upload(file: UploadFile = File(...), language: str = Form("tr"), inf
     import json
     units = json.loads(information_units) if information_units else None
     with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "audio"
+        path = Path(d) / ("audio" + Path(file.filename or "").suffix.lower())   # keep the extension: it helps the decoder pick the container
         with open(path, "wb") as f:
             while chunk := file.file.read(1 << 20):
                 f.write(chunk)
@@ -225,8 +231,8 @@ def analyze_upload(file: UploadFile = File(...), language: str = Form("tr"), inf
 def _analyze(audio_file: Path, req: AnalyzeRequest):
     try:
         audio = decode_audio_16k(str(audio_file))
-    except Exception:
-        raise HTTPException(status_code=422, detail="audio could not be decoded")
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"audio could not be decoded: {type(e).__name__}: {str(e)[:160]}")
     total_s = len(audio) / 16000
     vad = vad_pause_stats(audio)
 

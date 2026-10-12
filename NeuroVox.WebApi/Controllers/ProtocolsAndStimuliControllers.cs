@@ -59,7 +59,7 @@ namespace NeuroVox.WebApi.Controllers
         }
 
         // Only the approval record can change after creation; the scientific content of a protocol version stays frozen.
-        [HttpPut("{id}/ethics")]
+        [HttpPost("{id}/ethics")]
         [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Post ResearchProtocols", ActionType = ActionType.Writing)]
         public async Task<IActionResult> SetEthics(Guid id, [FromBody] EthicsRequest r)
         {

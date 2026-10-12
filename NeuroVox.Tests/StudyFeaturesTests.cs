@@ -89,19 +89,19 @@ namespace NeuroVox.Tests
 
             // 2) assessed but excluded (severe psychiatric illness)
             var bad = new { diagnosis = 0, willingFollowUp6Months = true, adequateVisionHearing = true, severeMentalIllness = true, severeNeurologicalDeficit = false, languageBarrier = false };
-            Assert.False((await (await c.PutAsJsonAsync($"/api/Participants/{person}/eligibility", bad)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("eligible").GetBoolean());
+            Assert.False((await (await c.PostAsJsonAsync($"/api/Participants/{person}/eligibility", bad)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("eligible").GetBoolean());
             Assert.Contains("inclusion/exclusion", await (await c.PostAsync("/api/SpeechRecordings/upload", Upload(visit, stimulus))).Content.ReadAsStringAsync());
 
             // 3) eligible, but the protocol has no ethics approval yet
             var good = new { diagnosis = 0, willingFollowUp6Months = true, adequateVisionHearing = true, severeMentalIllness = false, severeNeurologicalDeficit = false, languageBarrier = false };
-            Assert.True((await (await c.PutAsJsonAsync($"/api/Participants/{person}/eligibility", good)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("eligible").GetBoolean());
+            Assert.True((await (await c.PostAsJsonAsync($"/api/Participants/{person}/eligibility", good)).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("eligible").GetBoolean());
             Assert.Contains("ethics approval", await (await c.PostAsync("/api/SpeechRecordings/upload", Upload(visit, stimulus))).Content.ReadAsStringAsync());
 
             // 4) approval recorded -> accepted
-            Assert.Equal(HttpStatusCode.NoContent, (await c.PutAsJsonAsync($"/api/ResearchProtocols/{protocol}/ethics",
+            Assert.Equal(HttpStatusCode.NoContent, (await c.PostAsJsonAsync($"/api/ResearchProtocols/{protocol}/ethics",
                 new { ethicsCommittee = "KEK", ethicsApprovalNumber = "2026/123", ethicsApprovalDate = "2026-01-15" })).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await c.PostAsync("/api/SpeechRecordings/upload", Upload(visit, stimulus))).StatusCode);
-            Assert.Equal(HttpStatusCode.BadRequest, (await c.PutAsJsonAsync($"/api/Participants/{person}/eligibility", new { diagnosis = 0 })).StatusCode);   // incomplete form
+            Assert.Equal(HttpStatusCode.BadRequest, (await c.PostAsJsonAsync($"/api/Participants/{person}/eligibility", new { diagnosis = 0 })).StatusCode);   // incomplete form
         }
 
         private async Task<(Guid tenant, List<Guid> visits)> SeedCohort()

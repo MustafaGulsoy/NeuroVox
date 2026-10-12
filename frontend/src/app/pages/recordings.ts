@@ -5,7 +5,7 @@ import { ApiService } from '../core/api.service';
 import { AnalysisInfo, AUDIO_QUALITY, Participant, Recording, Stimulus, VISIT_TYPES, Visit } from '../core/models';
 import { ToastService } from '../core/toast.service';
 import { IconComponent } from '../shared/icon.component';
-import { Empty, Modal, StatusBadge, fmtDateTime, fmtDuration } from '../shared/ui';
+import { Empty, Modal, StatusBadge, fmtDate, fmtDateTime, fmtDuration } from '../shared/ui';
 
 @Component({
   selector: 'app-recordings',
@@ -28,7 +28,7 @@ import { Empty, Modal, StatusBadge, fmtDateTime, fmtDuration } from '../shared/u
           <label class="field">Ziyaret
             <select class="input" [ngModel]="vid()" (ngModelChange)="pickVisit($event)" [disabled]="!pid() && !vid()">
               <option value="">Tümü</option>
-              @for (v of visits(); track v.id) { <option [value]="v.id">{{ vt[v.visitType] }} · {{ v.id.slice(0, 6) }}</option> }
+              @for (v of visits(); track v.id) { <option [value]="v.id">{{ vt[v.visitType] }} · {{ d(v.actualDate || v.scheduledDate) }}</option> }
               @if (vid() && !hasVisit()) { <option [value]="vid()">Seçili ziyaret</option> }
             </select>
           </label>
@@ -77,7 +77,7 @@ import { Empty, Modal, StatusBadge, fmtDateTime, fmtDuration } from '../shared/u
           <label class="field">Ziyaret *
             <select class="input" name="v" [(ngModel)]="uf.visitId" required [disabled]="!uf.pid">
               <option value="" disabled>Seçin…</option>
-              @for (v of uploadVisits(); track v.id) { <option [value]="v.id">{{ vt[v.visitType] }} · {{ v.id.slice(0, 6) }}</option> }
+              @for (v of uploadVisits(); track v.id) { <option [value]="v.id">{{ vt[v.visitType] }} · {{ d(v.actualDate || v.scheduledDate) }}</option> }
             </select>
           </label>
           <label class="field">Uyarıcı *
@@ -148,7 +148,7 @@ export class RecordingsPage implements OnInit, OnDestroy {
   upOpen = signal(false); busy = signal(false); progress = signal<number | null>(null);
   ana = signal<AnalysisInfo | null>(null); anaRec = signal<Recording | null>(null);
   del = signal<Recording | null>(null);
-  vt = VISIT_TYPES; q = AUDIO_QUALITY; dur = fmtDuration; dt = fmtDateTime;
+  vt = VISIT_TYPES; q = AUDIO_QUALITY; d = fmtDate; dur = fmtDuration; dt = fmtDateTime;
   uf: any = {}; file: File | null = null;
   private timer: any;
 

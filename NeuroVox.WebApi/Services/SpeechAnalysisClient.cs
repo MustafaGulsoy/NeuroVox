@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace NeuroVox.WebApi.Services
 {
-    public class SpeechAnalysisClient(HttpClient http, AudioStorage audio, AiHostPool pool, ModelStorage models, IConfiguration config) : ISpeechAnalysisClient
+    public class SpeechAnalysisClient(HttpClient http, AudioStorage audio, AiHostPool pool, ModelStorage models, IConfiguration config, ILogger<SpeechAnalysisClient> log) : ISpeechAnalysisClient
     {
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -40,12 +40,18 @@ namespace NeuroVox.WebApi.Services
                     using (fs)
                     {
                         var response = await http.SendAsync(req);
-                        if (!response.IsSuccessStatusCode) return null;
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            var body = await response.Content.ReadAsStringAsync();
+                            log.LogWarning("AI host {Host} rejected analyze: {Status} {Body}", host.BaseUrl, (int)response.StatusCode, body.Length > 300 ? body[..300] : body);
+                            return null;
+                        }
                         return await response.Content.ReadFromJsonAsync<AnalysisResult>(JsonOptions);
                     }
                 }
-                catch (HttpRequestException) when (attempt < 2)
+                catch (HttpRequestException ex) when (attempt < 2)
                 {
+                    log.LogWarning("AI host {Host} unreachable ({Msg}), retrying", host.BaseUrl, ex.Message);
                     await Task.Delay(TimeSpan.FromSeconds(3 * (attempt + 1)));   // fresh tunnels need a few seconds to resolve
                 }
             }

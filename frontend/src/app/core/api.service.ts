@@ -49,8 +49,8 @@ export class ApiService {
   longitudinal(participantId: string, featureName: string) {
     return this.http.get<any>(`/api/Analysis/longitudinal/${participantId}`, { params: { featureName } });
   }
-  setEligibility(id: string, b: object) { return this.http.put<{ eligible: boolean }>(`/api/Participants/${id}/eligibility`, b); }
-  setEthics(id: string, b: object) { return this.http.put<void>(`/api/ResearchProtocols/${id}/ethics`, b); }
+  setEligibility(id: string, b: object) { return this.http.post<{ eligible: boolean }>(`/api/Participants/${id}/eligibility`, b); }
+  setEthics(id: string, b: object) { return this.http.post<void>(`/api/ResearchProtocols/${id}/ethics`, b); }
   groupComparison(by: string) { return this.http.get<GroupComparison>('/api/Analysis/group-comparison', { params: { by } }); }
   raterAgreement() { return this.http.get<RaterAgreement>('/api/Analysis/rater-agreement'); }
   predictVisit(visitId: string) { return this.http.get<VisitPrediction>(`/api/Predictions/visit/${visitId}`); }

@@ -21,7 +21,7 @@ except Exception:
     sys.exit("KAGGLE_INTERNET_OFF: kernel has no internet access (verify the phone number of this Kaggle account)")
 
 subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "faster-whisper==1.1.0", "zeyrek==0.1.3",
-                       "python-multipart==0.0.20", "uvicorn", "fastapi", "joblib"])
+                       "python-multipart==0.0.20", "uvicorn", "fastapi", "joblib", "av>=13"])
 subprocess.call([sys.executable, "-m", "pip", "install", "-q", "-U", "transformers", "accelerate"])   # LLM grammar/semantic review (GPU only)
 for vad in ("webrtcvad-wheels", "webrtcvad"):   # optional: app.py falls back to no pause detection without it
     if subprocess.call([sys.executable, "-m", "pip", "install", "-q", vad]) == 0:

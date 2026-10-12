@@ -123,7 +123,7 @@ namespace NeuroVox.Tests
 
             var protocol = await Id(await a.PostAsJsonAsync("/api/ResearchProtocols", new { name = "P", version = "1", codingManualVersion = "1" }));
             var stimulus = await Id(await a.PostAsJsonAsync("/api/Stimuli", new { stimulusId = "S", version = "1", protocolId = protocol }));
-            var noConsent = await Id(await a.PostAsJsonAsync("/api/Participants", new { participantCode = "NC" }));
+            var noConsent = await Id(await a.PostAsJsonAsync("/api/Participants", new { sex = "Kadın" }));   // exactly what the UI sends: no code
             var consented = await Id(await a.PostAsJsonAsync("/api/Participants", new { participantCode = "C1", consentVersion = "v1" }));
             // Codes are system-assigned and sequential; a client-sent code is ignored.
             var codes = (await a.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/Participants")).EnumerateArray().Select(x => x.GetProperty("participantCode").GetString()).OrderBy(x => x).ToArray();

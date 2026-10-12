@@ -81,7 +81,7 @@ export class ParticipantsPage implements OnInit {
   f: any = this.blank();
 
   filtered = () => this.all().filter(p => p.participantCode.toLowerCase().includes(this.q().trim().toLowerCase()));
-  private blank() { return { participantCode: '', sex: '', dateOfBirth: '', consentVersion: '', notes: '' }; }
+  private blank() { return { sex: '', dateOfBirth: '', consentVersion: '', notes: '' }; }
 
   ngOnInit() { this.load(); }
   load() {
