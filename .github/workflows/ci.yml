@@ -48,7 +48,8 @@ jobs:
       - run: pip install -r services/neurovox_ai/requirements-dev.txt pandas==2.2.3
       - run: python -m pytest -q services/neurovox_ai/tests services/neurovox_pipeline/tests
 
-  docker:
+  docker:   # pull requests only: prove the images build (pushes to main build them in `deploy`)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: [dotnet, python, frontend]
     steps:
@@ -56,3 +57,32 @@ jobs:
       - run: docker build -f Dockerfile.api -t neurovox-api .
       - run: docker build -t neurovox-ai services/neurovox_ai
       - run: docker build -t neurovox-web frontend
+
+  # Every push to main that passes the tests is built here and shipped to the VPS. The SSH key is restricted to
+  # deploy/ci-deploy.sh on the server (forced command): it loads the images, switches compose tags, waits for health, rolls back on failure.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [dotnet, python, frontend]
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: |
+          TAG=$(git rev-parse --short=12 HEAD)
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          docker build -f Dockerfile.api -t neurovox-api:$TAG .
+          docker build -t neurovox-web:$TAG frontend
+      - name: Ship and switch
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          docker save neurovox-api:$TAG neurovox-web:$TAG | gzip \
+            | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes root@"$DEPLOY_HOST" "$TAG"
