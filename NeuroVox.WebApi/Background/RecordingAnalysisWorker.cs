@@ -149,7 +149,16 @@ namespace NeuroVox.WebApi.Background
             rec.AnalysisError = null;
             await db.SaveChangesAsync(ct);
 
-            var result = await client.AnalyzeAsync(lease.Host, rec.AudioFilePath, rec.CustomerId, rec.VisitId, rec.Id);
+            AnalysisResult? result;
+            try { result = await client.AnalyzeAsync(lease.Host, rec.AudioFilePath, rec.CustomerId, rec.VisitId, rec.Id); }
+            catch (HttpRequestException)
+            {
+                // A fresh Kaggle tunnel can take minutes to resolve: stay queued and retry instead of failing the recording.
+                // ponytail: no retry cap; a dead host stops heartbeating (3 min) and the job then waits for the next kernel.
+                rec.AnalysisStatus = AnalysisStatus.Queued; rec.AnalysisError = WaitingText;
+                await db.SaveChangesAsync(ct);
+                return false;
+            }
             if (result is null)
             {
                 rec.AnalysisStatus = AnalysisStatus.Failed;
