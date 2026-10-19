@@ -80,6 +80,10 @@ import { Empty, Modal, StatusBadge, fmtDate, fmtDateTime, fmtDuration } from '..
               @for (v of uploadVisits(); track v.id) { <option [value]="v.id">{{ vt[v.visitType] }} · {{ d(v.actualDate || v.scheduledDate) }}</option> }
             </select>
           </label>
+          @if (uf.pid && !uploadVisits().length) {
+            <div class="notice warn wide">Bu katılımcının henüz ziyareti yok.
+              <button class="btn sm" type="button" (click)="quickVisit()" [disabled]="!stimuli().length">Başlangıç ziyareti oluştur</button></div>
+          }
           <label class="field">Uyarıcı *
             <select class="input" name="s" [ngModel]="uf.stimulusId" (ngModelChange)="pickStimulus($event)" required>
               <option value="" disabled>Seçin…</option>
@@ -197,6 +201,15 @@ export class RecordingsPage implements OnInit, OnDestroy {
   uploadParticipant(id: string) {
     this.uf.pid = id; this.uf.visitId = ''; this.uploadVisits.set([]);
     this.api.visits(id).subscribe({ next: v => this.uploadVisits.set(v), error: e => this.toast.err(e) });
+  }
+  // ponytail: protocol taken from the first stimulus; pick another visit type/protocol on the participant page.
+  quickVisit() {
+    const protocolId = this.stimuli()[0]?.protocolId;
+    if (!protocolId) return;
+    this.api.createVisit({ participantId: this.uf.pid, protocolId, visitType: 0 }).subscribe({
+      next: v => this.api.visits(this.uf.pid).subscribe(list => { this.uploadVisits.set(list); this.uf.visitId = v.id; this.toast.ok('Ziyaret oluşturuldu'); }),
+      error: e => this.toast.err(e)
+    });
   }
   pickStimulus(id: string) { this.uf.stimulusId = id; this.uf.stimulusVersion = this.stimuli().find(s => s.id === id)?.version ?? ''; }
   pickFile(ev: Event) {
