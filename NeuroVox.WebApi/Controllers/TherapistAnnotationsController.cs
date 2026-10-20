@@ -82,9 +82,9 @@ namespace NeuroVox.WebApi.Controllers
             return BadRequest(new { title = "customerid missing" });
         }
 
-        // A rater can take back their own label (soft delete). Same permission as Post: no new BaseAuth endpoint row needed.
+        // A rater can take back their own label (soft delete). Needs the auth."Endpoints" row from deploy/endpoint-delete-annotations.sql.
         [HttpDelete("{id}")]
-        [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Post TherapistAnnotations", ActionType = ActionType.Writing)]
+        [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Delete TherapistAnnotations", ActionType = ActionType.Deleting)]
         public async Task<IActionResult> Delete(Guid id)
         {
             if (CurrentUserId is not Guid me) return Unauthorized();
