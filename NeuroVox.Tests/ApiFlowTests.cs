@@ -157,6 +157,13 @@ namespace NeuroVox.Tests
             Assert.Contains("\"startSeconds\"", await r1.GetStringAsync($"/api/TherapistAnnotations/by-recording/{rec}"));
             Assert.DoesNotContain("startSeconds", await r2.GetStringAsync($"/api/TherapistAnnotations/by-recording/{rec}"));
 
+            // A rater can take back only their own label.
+            var annId = System.Text.Json.JsonDocument.Parse(await r1.GetStringAsync($"/api/TherapistAnnotations/by-recording/{rec}")).RootElement[0].GetProperty("id").GetGuid();
+            Assert.Equal(HttpStatusCode.NotFound, (await r2.DeleteAsync($"/api/TherapistAnnotations/{annId}")).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await r1.DeleteAsync($"/api/TherapistAnnotations/{annId}")).StatusCode);
+            Assert.DoesNotContain("startSeconds", await r1.GetStringAsync($"/api/TherapistAnnotations/by-recording/{rec}"));
+            Assert.True((await r1.PostAsJsonAsync("/api/TherapistAnnotations", ann)).IsSuccessStatusCode);
+
             // Erasure removes the audio file.
             Assert.Equal(HttpStatusCode.NoContent, (await a.DeleteAsync($"/api/Participants/{consented}")).StatusCode);
             Assert.Empty(Directory.GetFiles(_f.AudioDir));

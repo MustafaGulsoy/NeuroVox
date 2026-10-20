@@ -82,6 +82,19 @@ namespace NeuroVox.WebApi.Controllers
             return BadRequest(new { title = "customerid missing" });
         }
 
+        // A rater can take back their own label (soft delete). Same permission as Post: no new BaseAuth endpoint row needed.
+        [HttpDelete("{id}")]
+        [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Post TherapistAnnotations", ActionType = ActionType.Writing)]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            if (CurrentUserId is not Guid me) return Unauthorized();
+            var a = _read.GetWhere(x => x.Id == id && x.AnnotatorId == me && !x.RowIsDeleted).FirstOrDefault();
+            if (a is null) return NotFound();
+            a.RowIsDeleted = true;
+            await _write.SaveAsync();
+            return NoContent();
+        }
+
         // Blind mode: a rater only ever sees their own submissions. Blinded rater
         // submissions are hidden from other raters; AI results are never in this payload.
         [HttpGet("by-recording/{recordingId}")]
