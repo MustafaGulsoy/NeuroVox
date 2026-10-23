@@ -239,7 +239,7 @@ namespace NeuroVox.WebApi.Controllers
         {
             var rec = _read.GetWhere(r => r.Id == id && !r.RowIsDeleted).FirstOrDefault();
             if (rec is null) return NotFound();
-            rec.TranscriptText = string.IsNullOrWhiteSpace(body.Text) ? null : body.Text.Trim();
+            rec.TranscriptText = string.IsNullOrWhiteSpace(body.Text) ? null : System.Text.RegularExpressions.Regex.Replace(body.Text.Trim(), @"[ \t]{2,}", " ");
             rec.TranscriptSource = "manual";
             await _write.SaveAsync();
             return Ok(ToDto(rec));

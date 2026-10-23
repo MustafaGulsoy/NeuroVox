@@ -174,7 +174,7 @@ namespace NeuroVox.Tests
 
             // Manual transcript correction is stored, marked manual, and tenant-scoped.
             Assert.Equal(HttpStatusCode.NotFound, (await b.PutAsJsonAsync($"/api/SpeechRecordings/{rec}/transcript", new { text = "x" })).StatusCode);
-            Assert.Equal(HttpStatusCode.OK, (await r1.PutAsJsonAsync($"/api/SpeechRecordings/{rec}/transcript", new { text = "  düzeltilmiş metin " })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await r1.PutAsJsonAsync($"/api/SpeechRecordings/{rec}/transcript", new { text = "  düzeltilmiş   metin " })).StatusCode);
             var saved = await a.GetFromJsonAsync<System.Text.Json.JsonElement>($"/api/SpeechRecordings/{rec}");
             Assert.Equal("düzeltilmiş metin", saved.GetProperty("transcriptText").GetString());
             Assert.Equal("manual", saved.GetProperty("transcriptSource").GetString());

@@ -242,7 +242,7 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
     model = get_whisper()
     segments_iter, info = model.transcribe(audio, language=req.language, beam_size=5)
     segments = list(segments_iter)
-    text = " ".join(s.text for s in segments).strip()
+    text = " ".join(s.text.strip() for s in segments).strip()   # whisper segments start with a space: joining raw gave double spaces
 
     lex = lexical_metrics(text)
     utterances = count_utterances(segments, text)
