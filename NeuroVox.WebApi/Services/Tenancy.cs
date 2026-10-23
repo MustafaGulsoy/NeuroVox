@@ -38,6 +38,8 @@ namespace NeuroVox.WebApi.Services
             new("POST.Writing.PostPredictions", "Analiz", "Model tahmini", true),
             new("GET.Reading.GetTherapistAnnotations", "Anotasyon", "Anotasyonları görüntüle", true),
             new("POST.Writing.PostTherapistAnnotations", "Anotasyon", "Anotasyon yaz (kör değerlendirme)", true),
+            new("GET.Reading.GetAphasiaRatings", "Anotasyon", "Afazi türü hükmünü görüntüle", true),
+            new("PUT.Updating.PutAphasiaRatings", "Anotasyon", "Kayıt için afazi türü işaretle", true),
             new("GET.Reading.GetAceAssessments", "ACE-III", "ACE-III sonuçlarını görüntüle", true),
             new("POST.Writing.PostAceAssessments", "ACE-III", "ACE-III girişi", true),
             new("GET.Reading.GetResearchProtocols", "Araştırma", "Protokolleri görüntüle", true),

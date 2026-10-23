@@ -164,6 +164,14 @@ namespace NeuroVox.Tests
             Assert.DoesNotContain("startSeconds", await r1.GetStringAsync($"/api/TherapistAnnotations/by-recording/{rec}"));
             Assert.True((await r1.PostAsJsonAsync("/api/TherapistAnnotations", ann)).IsSuccessStatusCode);
 
+            // Overall aphasia type: upsert per rater, blind between raters.
+            Assert.Equal(HttpStatusCode.OK, (await r1.PutAsJsonAsync($"/api/AphasiaRatings/by-recording/{rec}", new { type = 1 })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await r1.PutAsJsonAsync($"/api/AphasiaRatings/by-recording/{rec}", new { type = 5 })).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await r1.PutAsJsonAsync($"/api/AphasiaRatings/by-recording/{rec}", new { type = 99 })).StatusCode);
+            Assert.Equal(5, (await r1.GetFromJsonAsync<System.Text.Json.JsonElement>($"/api/AphasiaRatings/by-recording/{rec}")).GetProperty("type").GetInt32());
+            Assert.Equal("", (await r2.GetStringAsync($"/api/AphasiaRatings/by-recording/{rec}")).Trim());
+            Assert.Equal(HttpStatusCode.NotFound, (await b.PutAsJsonAsync($"/api/AphasiaRatings/by-recording/{rec}", new { type = 1 })).StatusCode);
+
             // Manual transcript correction is stored, marked manual, and tenant-scoped.
             Assert.Equal(HttpStatusCode.NotFound, (await b.PutAsJsonAsync($"/api/SpeechRecordings/{rec}/transcript", new { text = "x" })).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await r1.PutAsJsonAsync($"/api/SpeechRecordings/{rec}/transcript", new { text = "  düzeltilmiş metin " })).StatusCode);

@@ -91,6 +91,52 @@ namespace NeuroVox.Persistence.Migrations
                     b.ToTable("AceAssessments", "neurovox");
                 });
 
+            modelBuilder.Entity("NeuroVox.Domain.Entities.AphasiaRating", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AnnotatorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RaterIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RecordingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("RowCreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("RowIsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RowIsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("RowUpdatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("VisitId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecordingId", "AnnotatorId");
+
+                    b.ToTable("AphasiaRatings", "neurovox");
+                });
+
             modelBuilder.Entity("NeuroVox.Domain.Entities.ClinicalOutcome", b =>
                 {
                     b.Property<Guid>("Id")

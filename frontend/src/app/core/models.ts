@@ -42,6 +42,11 @@ export const ANNOTATION_CATEGORIES = [
   'Anomi', 'Dolaylı anlatım', 'Belirsiz ifade', 'Boş ifade', 'Tekrar', 'Zamir belirsizliği', 'Anlamsal hata',
   'Morfosentaks sorunu', 'Bilgi atlama', 'Olay atlama', 'Tutarlılık sorunu', 'Bağdaşıklık sorunu', 'Konudan sapma'
 ];
+// Index = server AphasiaType enum value.
+export const APHASIA_TYPES = [
+  'Afazi yok', 'Broca (motor)', 'Wernicke (duyusal)', 'Global', 'İletim', 'Anomik',
+  'Transkortikal motor', 'Transkortikal duyusal', 'Karma transkortikal', 'Sınıflandırılamadı'
+];
 export const STATUS_LABEL: Record<number, string> = { 0: 'Beklemede', 1: 'Kuyrukta', 2: 'Çalışıyor', 3: 'Tamamlandı', 4: 'Başarısız' };
 export const VALIDATION_LABEL = ['Deneysel', 'Onay bekliyor', 'Protokol onaylı'];
 

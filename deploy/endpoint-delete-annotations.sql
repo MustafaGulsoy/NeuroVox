@@ -27,3 +27,20 @@ JOIN auth."Endpoints" p ON p."Code"='POST.Writing.PostTherapistAnnotations'
 JOIN auth."AppRoleEndpoint" x ON x."EndpointsId"=p."Id"
 WHERE d."Code"='PUT.Updating.PutSpeechRecordingTranscript'
 ON CONFLICT DO NOTHING;
+
+-- GET/PUT /api/AphasiaRatings/by-recording/{id}: same roles as annotating.
+INSERT INTO auth."Endpoints" ("Id","ActionType","HttpType","Definition","Code","MenuId","RowCreatedDate","RowIsActive","RowIsDeleted")
+SELECT gen_random_uuid(), v.at, v.ht, v.def, v.code, p."MenuId", now(), true, false
+FROM auth."Endpoints" p,
+     (VALUES ('Reading','GET','Get AphasiaRatings','GET.Reading.GetAphasiaRatings'),
+             ('Updating','PUT','Put AphasiaRatings','PUT.Updating.PutAphasiaRatings')) AS v(at,ht,def,code)
+WHERE p."Code"='POST.Writing.PostTherapistAnnotations'
+  AND NOT EXISTS (SELECT 1 FROM auth."Endpoints" e WHERE e."Code"=v.code);
+
+INSERT INTO auth."AppRoleEndpoint" ("EndpointsId","RolesId")
+SELECT d."Id", x."RolesId"
+FROM auth."Endpoints" d
+JOIN auth."Endpoints" p ON p."Code"='POST.Writing.PostTherapistAnnotations'
+JOIN auth."AppRoleEndpoint" x ON x."EndpointsId"=p."Id"
+WHERE d."Code" IN ('GET.Reading.GetAphasiaRatings','PUT.Updating.PutAphasiaRatings')
+ON CONFLICT DO NOTHING;

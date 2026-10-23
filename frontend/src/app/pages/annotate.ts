@@ -2,7 +2,7 @@ import { Component, ElementRef, OnDestroy, OnInit, inject, input, signal, viewCh
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
-import { ANNOTATION_CATEGORIES, Annotation, Recording } from '../core/models';
+import { ANNOTATION_CATEGORIES, APHASIA_TYPES, Annotation, Recording } from '../core/models';
 import { ToastService } from '../core/toast.service';
 import { IconComponent } from '../shared/icon.component';
 import { Empty, StatusBadge, fmtDuration } from '../shared/ui';
@@ -77,6 +77,16 @@ const PEAKS = 6000;
             </section>
 
             <section class="card">
+              <header><h2>Genel değerlendirme</h2></header>
+              <div class="muted" style="margin-bottom:10px">Tüm konuşmayı dinledikten sonra hastanın afazi türünü işaretleyin. Seçim anında kaydedilir.</div>
+              <div class="chips">
+                @for (t of aphasiaTypes; track $index) {
+                  <button type="button" class="chip" [class.on]="aphasia() === $index" style="--c: var(--primary)" (click)="setAphasia($index)" [disabled]="busy()">{{ t }}</button>
+                }
+              </div>
+            </section>
+
+            <section class="card">
               <header>
                 <h2>Transkript @if (rec()!.transcriptSource === 'manual') { <span class="badge">elle düzeltildi</span> }</h2>
                 @if (!editing()) { <button class="btn sm" type="button" (click)="editText = rec()!.transcriptText || ''; editing.set(true)">Düzenle</button> }
@@ -120,6 +130,7 @@ const PEAKS = 6000;
     .chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 99px; border: 1.5px solid var(--c); background: transparent; color: var(--text); font: inherit; font-size: .88rem; cursor: pointer; }
     .chip:hover:not(:disabled) { background: color-mix(in srgb, var(--c) 18%, transparent); }
+    .chip.on { background: var(--c); color: #fff; }
     .chip:disabled { opacity: .5; cursor: default; }
     .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
     .seg button { border: 0; background: var(--surface); color: var(--text); padding: 8px 12px; font: inherit; font-size: .85rem; cursor: pointer; }
@@ -152,6 +163,8 @@ export class AnnotatePage implements OnInit, OnDestroy {
   sel = signal<{ a: number; b: number } | null>(null);
   activeId = signal<string | null>(null);
   severity = signal('');
+  aphasia = signal<number | null>(null);
+  aphasiaTypes = APHASIA_TYPES;
   editing = signal(false);
   editText = '';
   raterIndex = 1;
@@ -196,6 +209,7 @@ export class AnnotatePage implements OnInit, OnDestroy {
       error: e => this.toast.err(e)
     });
     this.loadAnns();
+    this.api.aphasiaRating(this.id()).subscribe({ next: r => this.aphasia.set(r?.type ?? null), error: () => {} });
   }
   ngOnDestroy() {
     window.removeEventListener('keydown', this.onKey);
@@ -363,6 +377,14 @@ export class AnnotatePage implements OnInit, OnDestroy {
       startSeconds: +s.a.toFixed(2), endSeconds: +s.b.toFixed(2), segmentText: null, note: null, annotationVersion: '1.0'
     }).subscribe({
       next: () => { this.busy.set(false); this.toast.ok(`${this.cats[category]} kaydedildi`); this.clearSel(); this.loadAnns(); },
+      error: e => { this.busy.set(false); this.toast.err(e); }
+    });
+  }
+
+  setAphasia(type: number) {
+    this.busy.set(true);
+    this.api.rateAphasia(this.id(), type, this.raterIndex).subscribe({
+      next: () => { this.busy.set(false); this.aphasia.set(type); this.toast.ok(`Afazi türü: ${APHASIA_TYPES[type]}`); },
       error: e => { this.busy.set(false); this.toast.err(e); }
     });
   }

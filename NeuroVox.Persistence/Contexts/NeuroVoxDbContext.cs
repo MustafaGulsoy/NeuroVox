@@ -18,6 +18,7 @@ namespace NeuroVox.Persistence.Contexts
         public DbSet<FeatureDefinition> FeatureDefinitions => Set<FeatureDefinition>();
         public DbSet<FeatureMeasurement> FeatureMeasurements => Set<FeatureMeasurement>();
         public DbSet<TherapistAnnotation> TherapistAnnotations => Set<TherapistAnnotation>();
+        public DbSet<AphasiaRating> AphasiaRatings => Set<AphasiaRating>();
         public DbSet<AceAssessment> AceAssessments => Set<AceAssessment>();
         public DbSet<ClinicalOutcome> ClinicalOutcomes => Set<ClinicalOutcome>();
         public DbSet<KaggleAccount> KaggleAccounts => Set<KaggleAccount>();
@@ -34,6 +35,8 @@ namespace NeuroVox.Persistence.Contexts
             modelBuilder.Entity<FeatureDefinition>().HasIndex(f => new { f.FeatureName, f.AlgorithmVersion }).IsUnique();
             modelBuilder.Entity<FeatureMeasurement>().HasIndex(m => new { m.VisitId, m.FeatureName });
             modelBuilder.Entity<TherapistAnnotation>().HasIndex(a => new { a.RecordingId, a.AnnotatorId });
+            modelBuilder.Entity<AphasiaRating>().HasIndex(a => new { a.RecordingId, a.AnnotatorId });
+            modelBuilder.Entity<AphasiaRating>().HasQueryFilter(e => CurrentTenant == null || e.CustomerId == CurrentTenant);
             modelBuilder.Entity<AceAssessment>().HasIndex(a => new { a.ParticipantId, a.VisitId });
             modelBuilder.Entity<ClinicalOutcome>().HasIndex(o => new { o.ParticipantId });
 

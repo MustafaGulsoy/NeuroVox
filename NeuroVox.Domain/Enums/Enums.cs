@@ -53,6 +53,20 @@ namespace NeuroVox.Domain.Enums
         TopicDeviation = 12
     }
 
+    public enum AphasiaType
+    {
+        None = 0,
+        Broca = 1,
+        Wernicke = 2,
+        Global = 3,
+        Conduction = 4,
+        Anomic = 5,
+        TranscorticalMotor = 6,
+        TranscorticalSensory = 7,
+        MixedTranscortical = 8,
+        Unclassified = 9
+    }
+
     public enum OutcomeType
     {
         StableMCI = 0,
