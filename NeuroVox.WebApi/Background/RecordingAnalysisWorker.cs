@@ -167,7 +167,7 @@ namespace NeuroVox.WebApi.Background
                 return true;
             }
 
-            if (!string.IsNullOrWhiteSpace(result.Transcript) && string.IsNullOrWhiteSpace(rec.TranscriptText))
+            if (!string.IsNullOrWhiteSpace(result.Transcript) && rec.TranscriptSource != "manual")   // a hand-corrected transcript is never overwritten by a re-run
             {
                 rec.TranscriptText = result.Transcript;
                 rec.TranscriptSource = "faster-whisper";

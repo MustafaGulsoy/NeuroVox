@@ -10,7 +10,7 @@ export interface Visit { id: string; participantId: string; protocolId: string; 
 export interface Recording {
   id: string; visitId: string; stimulusId: string; stimulusVersion: string; instructionVersion: string;
   recordingDurationSeconds: number; speechDurationSeconds?: number | null; audioQuality: number; hasAudio: boolean;
-  transcriptText?: string | null; analysisStatus: AnalysisStatus; analysisError?: string | null; analyzedAt?: string | null;
+  transcriptText?: string | null; transcriptSource?: string | null; analysisStatus: AnalysisStatus; analysisError?: string | null; analyzedAt?: string | null;
 }
 export interface Measurement { featureName: string; numericValue: number | null; textValue: string | null; isCandidateAnnotation: boolean; definitionVersion?: string; modelVersion?: string; }
 export interface AnalysisInfo { id: string; status: AnalysisStatus; analysisError?: string; analyzedAt?: string; measurements: Measurement[]; }

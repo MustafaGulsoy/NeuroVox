@@ -31,6 +31,7 @@ export class ApiService {
 
   annotations(recordingId: string) { return this.http.get<Annotation[]>(`/api/TherapistAnnotations/by-recording/${recordingId}`); }
   createAnnotation(b: object) { return this.http.post<{ id: string }>('/api/TherapistAnnotations', b); }
+  saveTranscript(id: string, text: string) { return this.http.put<Recording>(`/api/SpeechRecordings/${id}/transcript`, { text }); }
   deleteAnnotation(id: string) { return this.http.delete<void>(`/api/TherapistAnnotations/${id}`); }
 
   protocols() { return this.http.get<Protocol[]>('/api/ResearchProtocols'); }

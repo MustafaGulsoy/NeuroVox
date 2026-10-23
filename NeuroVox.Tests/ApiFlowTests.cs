@@ -164,6 +164,13 @@ namespace NeuroVox.Tests
             Assert.DoesNotContain("startSeconds", await r1.GetStringAsync($"/api/TherapistAnnotations/by-recording/{rec}"));
             Assert.True((await r1.PostAsJsonAsync("/api/TherapistAnnotations", ann)).IsSuccessStatusCode);
 
+            // Manual transcript correction is stored, marked manual, and tenant-scoped.
+            Assert.Equal(HttpStatusCode.NotFound, (await b.PutAsJsonAsync($"/api/SpeechRecordings/{rec}/transcript", new { text = "x" })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await r1.PutAsJsonAsync($"/api/SpeechRecordings/{rec}/transcript", new { text = "  düzeltilmiş metin " })).StatusCode);
+            var saved = await a.GetFromJsonAsync<System.Text.Json.JsonElement>($"/api/SpeechRecordings/{rec}");
+            Assert.Equal("düzeltilmiş metin", saved.GetProperty("transcriptText").GetString());
+            Assert.Equal("manual", saved.GetProperty("transcriptSource").GetString());
+
             // Erasure removes the audio file.
             Assert.Equal(HttpStatusCode.NoContent, (await a.DeleteAsync($"/api/Participants/{consented}")).StatusCode);
             Assert.Empty(Directory.GetFiles(_f.AudioDir));

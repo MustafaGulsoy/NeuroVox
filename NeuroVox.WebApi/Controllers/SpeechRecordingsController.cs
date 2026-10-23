@@ -229,6 +229,22 @@ namespace NeuroVox.WebApi.Controllers
             return Ok(new { rec.Id, status = rec.AnalysisStatus, rec.AnalysisError, rec.AnalyzedAt, measurements });
         }
 
+        public class TranscriptRequest { public string? Text { get; set; } }
+
+        // Manual correction of the ASR text. Needs the auth."Endpoints" row from deploy/endpoint-delete-annotations.sql.
+        // ponytail: the original ASR text is overwritten; add an OriginalTranscript column if WER vs. ASR must be measured.
+        [HttpPut("{id}/transcript")]
+        [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Put SpeechRecordingTranscript", ActionType = ActionType.Updating)]
+        public async Task<IActionResult> PutTranscript(Guid id, [FromBody] TranscriptRequest body)
+        {
+            var rec = _read.GetWhere(r => r.Id == id && !r.RowIsDeleted).FirstOrDefault();
+            if (rec is null) return NotFound();
+            rec.TranscriptText = string.IsNullOrWhiteSpace(body.Text) ? null : body.Text.Trim();
+            rec.TranscriptSource = "manual";
+            await _write.SaveAsync();
+            return Ok(ToDto(rec));
+        }
+
         // KVKK erasure: removes the audio file and soft-deletes the record.
         [HttpDelete("{id}")]
         [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Delete SpeechRecordings", ActionType = ActionType.Deleting)]

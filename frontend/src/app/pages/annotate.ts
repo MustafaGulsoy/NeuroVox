@@ -70,9 +70,6 @@ const PEAKS = 6000;
                     @for (s of sevs; track s) { <button type="button" [class.on]="severity() === s" (click)="severity.set(s)">{{ s || '—' }}</button> }
                   </div>
                 </div>
-                <label class="field" style="flex:1;min-width:200px">Not (isteğe bağlı)
-                  <input class="input" name="n" [(ngModel)]="note" placeholder="Etiketle birlikte kaydedilir" />
-                </label>
                 <label class="field" style="width:110px">Değerlendirici #
                   <input class="input" name="r" type="number" min="1" [(ngModel)]="raterIndex" />
                 </label>
@@ -80,9 +77,18 @@ const PEAKS = 6000;
             </section>
 
             <section class="card">
-              <header><h2>Transkript</h2></header>
-              @if (rec()!.transcriptText) { <p style="white-space:pre-wrap;line-height:1.7">{{ rec()!.transcriptText }}</p> }
-              @else { <p class="muted">Transkript henüz yok. Kayıtlar sayfasından analizi başlatın.</p> }
+              <header>
+                <h2>Transkript @if (rec()!.transcriptSource === 'manual') { <span class="badge">elle düzeltildi</span> }</h2>
+                @if (!editing()) { <button class="btn sm" type="button" (click)="editText = rec()!.transcriptText || ''; editing.set(true)">Düzenle</button> }
+              </header>
+              @if (editing()) {
+                <textarea class="input" rows="8" [(ngModel)]="editText" name="tx" style="width:100%;line-height:1.6"></textarea>
+                <div class="row" style="margin-top:10px;gap:8px">
+                  <button class="btn primary" type="button" (click)="saveText()" [disabled]="busy()">Kaydet</button>
+                  <button class="btn" type="button" (click)="editing.set(false)">Vazgeç</button>
+                </div>
+              } @else if (rec()!.transcriptText) { <p style="white-space:pre-wrap;line-height:1.7">{{ rec()!.transcriptText }}</p> }
+              @else { <p class="muted">Transkript henüz yok. Kayıtlar sayfasından analizi başlatın ya da elle yazın.</p> }
             </section>
           </div>
 
@@ -146,7 +152,8 @@ export class AnnotatePage implements OnInit, OnDestroy {
   sel = signal<{ a: number; b: number } | null>(null);
   activeId = signal<string | null>(null);
   severity = signal('');
-  note = '';
+  editing = signal(false);
+  editText = '';
   raterIndex = 1;
   cats = ANNOTATION_CATEGORIES; keys = KEYS; dur = fmtDuration; col = color;
   rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -353,9 +360,17 @@ export class AnnotatePage implements OnInit, OnDestroy {
     this.api.createAnnotation({
       recordingId: r.id, visitId: r.visitId, raterIndex: +this.raterIndex || 1, category,
       severity: this.severity() || null, confidence: null,
-      startSeconds: +s.a.toFixed(2), endSeconds: +s.b.toFixed(2), segmentText: null, note: this.note || null, annotationVersion: '1.0'
+      startSeconds: +s.a.toFixed(2), endSeconds: +s.b.toFixed(2), segmentText: null, note: null, annotationVersion: '1.0'
     }).subscribe({
-      next: () => { this.busy.set(false); this.toast.ok(`${this.cats[category]} kaydedildi`); this.note = ''; this.clearSel(); this.loadAnns(); },
+      next: () => { this.busy.set(false); this.toast.ok(`${this.cats[category]} kaydedildi`); this.clearSel(); this.loadAnns(); },
+      error: e => { this.busy.set(false); this.toast.err(e); }
+    });
+  }
+
+  saveText() {
+    this.busy.set(true);
+    this.api.saveTranscript(this.id(), this.editText).subscribe({
+      next: r => { this.busy.set(false); this.rec.set(r); this.editing.set(false); this.toast.ok('Transkript kaydedildi'); },
       error: e => { this.busy.set(false); this.toast.err(e); }
     });
   }

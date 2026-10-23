@@ -33,7 +33,7 @@ except Exception:
     HAS_GPU = False
 
 env = dict(os.environ, NEUROVOX_AI_API_KEY="__AI_KEY__", NEUROVOX_DEVICE="cuda" if HAS_GPU else "cpu",
-           NEUROVOX_STT_MODEL="small", HF_HOME="/kaggle/working/hf")
+           NEUROVOX_STT_MODEL="large-v3" if HAS_GPU else "small", HF_HOME="/kaggle/working/hf")
 srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "8000"], cwd=W, env=env)
 
 cf = "/kaggle/working/cloudflared"
