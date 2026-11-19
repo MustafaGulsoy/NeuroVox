@@ -88,6 +88,35 @@ const PEAKS = 6000;
 
             <section class="card">
               <header>
+                <h2>Doktor konuşmaları ({{ doctor().length }})
+                  @if (rec()!.doctorSegmentsSource === 'auto' && !doctorDirty()) { <span class="badge warn">otomatik bulundu, kontrol edin</span> }
+                  @if (rec()!.doctorSegmentsSource === 'manual' && !doctorDirty()) { <span class="badge">elle işaretlendi</span> }
+                </h2>
+              </header>
+              <div class="muted" style="margin-bottom:10px">Doktorun sesini dalga formunda seçip işaretleyin; analizde bu aralıklar çıkarılır, yalnızca hasta konuşması ölçülür. Doğru olana kadar düzeltip yeniden analiz edebilirsiniz.</div>
+              <div class="row" style="gap:8px;flex-wrap:wrap">
+                <button class="btn sm" type="button" (click)="addDoctor()" [disabled]="!sel()" title="Seçimi doktor olarak işaretle (D)"><kbd>D</kbd> Seçimi doktor yap</button>
+                <button class="btn sm" type="button" (click)="doctor.set([]); doctorDirty.set(true); queueDraw()" [disabled]="!doctor().length">Hepsini temizle</button>
+              </div>
+              @if (doctor().length) {
+                <ul class="alist" style="max-height:220px;margin-top:10px">
+                  @for (d of doctor(); track $index) {
+                    <li (click)="seekTo(d.start)">
+                      <i class="dot" style="background:#f59e0b"></i>
+                      <div class="mono">{{ d.start.toFixed(1) }}–{{ d.end.toFixed(1) }} sn <span class="muted">({{ (d.end - d.start).toFixed(1) }} sn)</span></div>
+                      <button class="btn sm danger" type="button" (click)="removeDoctor($index); $event.stopPropagation()" aria-label="Sil"><app-icon name="trash" [size]="14" /></button>
+                    </li>
+                  }
+                </ul>
+              }
+              <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+                <button class="btn" type="button" (click)="saveDoctor(false)" [disabled]="busy() || !doctorDirty()">Kaydet</button>
+                <button class="btn primary" type="button" (click)="saveDoctor(true)" [disabled]="busy() || !rec()!.hasAudio" title="Kaydeder ve kaydı yalnızca hasta sesiyle yeniden analiz eder">Kaydet ve yeniden analiz et</button>
+              </div>
+            </section>
+
+            <section class="card">
+              <header>
                 <h2>Transkript @if (rec()!.transcriptSource === 'manual') { <span class="badge">elle düzeltildi</span> }</h2>
                 @if (!editing()) { <button class="btn sm" type="button" (click)="editText = rec()!.transcriptText || ''; editing.set(true)">Düzenle</button> }
               </header>
@@ -152,6 +181,8 @@ export class AnnotatePage implements OnInit, OnDestroy {
 
   rec = signal<Recording | null>(null);
   anns = signal<Annotation[]>([]);
+  doctor = signal<{ start: number; end: number }[]>([]);
+  doctorDirty = signal(false);
   audioUrl = signal<string | null>(null);
   busy = signal(false);
   playing = signal(false);
@@ -184,6 +215,7 @@ export class AnnotatePage implements OnInit, OnDestroy {
     const ci = KEYS.indexOf(k);
     if (e.code === 'Space' && el.tagName !== 'BUTTON') { e.preventDefault(); this.toggle(); }
     else if (ci >= 0) this.label(ci);
+    else if (k === 'd') this.addDoctor();
     else if (k === 'i') this.mark('a');
     else if (k === 'o') this.mark('b');
     else if (k === 'l') this.loop.set(!this.loop());
@@ -199,6 +231,7 @@ export class AnnotatePage implements OnInit, OnDestroy {
     this.api.recording(this.id()).subscribe({
       next: r => {
         this.rec.set(r);
+        this.doctor.set(r.doctorSegments ?? []);
         this.duration.set(r.recordingDurationSeconds || 0);
         // <audio> cannot send the bearer token, so the audio is fetched as a blob (also decoded for the waveform).
         if (r.hasAudio) this.api.audio(r.id).subscribe({
@@ -269,6 +302,9 @@ export class AnnotatePage implements OnInit, OnDestroy {
     const x = (t: number) => (t / d) * w;
     g.clearRect(0, 0, w, h);
 
+    g.fillStyle = '#f59e0b';                  // doctor ranges: excluded from analysis
+    for (const d of this.doctor()) { g.globalAlpha = .3; g.fillRect(x(d.start), 0, Math.max(2, x(d.end) - x(d.start)), h); }
+    g.globalAlpha = 1;
     for (const a of this.anns()) {            // saved labels as coloured bands
       g.globalAlpha = a.id === this.activeId() ? .38 : .22;
       g.fillStyle = color(a.category);
@@ -377,6 +413,24 @@ export class AnnotatePage implements OnInit, OnDestroy {
       startSeconds: +s.a.toFixed(2), endSeconds: +s.b.toFixed(2), segmentText: null, note: null, annotationVersion: '1.0'
     }).subscribe({
       next: () => { this.busy.set(false); this.toast.ok(`${this.cats[category]} kaydedildi`); this.clearSel(); this.loadAnns(); },
+      error: e => { this.busy.set(false); this.toast.err(e); }
+    });
+  }
+
+  addDoctor() {
+    const s = this.sel();
+    if (!s || s.b <= s.a) { this.toast.show('Önce dalga formunda doktorun konuştuğu aralığı seçin'); return; }
+    this.doctor.update(v => [...v, { start: +s.a.toFixed(2), end: +s.b.toFixed(2) }].sort((a, b) => a.start - b.start));
+    this.doctorDirty.set(true); this.clearSel();
+  }
+  removeDoctor(i: number) { this.doctor.update(v => v.filter((_, j) => j !== i)); this.doctorDirty.set(true); this.queueDraw(); }
+  saveDoctor(reanalyze: boolean) {
+    this.busy.set(true);
+    this.api.saveDoctorSegments(this.id(), this.doctor(), reanalyze).subscribe({
+      next: r => {
+        this.busy.set(false); this.rec.set(r); this.doctor.set(r.doctorSegments ?? []); this.doctorDirty.set(false); this.queueDraw();
+        this.toast.ok(reanalyze ? 'Kaydedildi, yeniden analiz kuyruğa alındı' : 'Doktor aralıkları kaydedildi');
+      },
       error: e => { this.busy.set(false); this.toast.err(e); }
     });
   }
