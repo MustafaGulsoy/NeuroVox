@@ -23,6 +23,8 @@ except Exception:
 subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "faster-whisper==1.1.0", "zeyrek==0.1.3",
                        "python-multipart==0.0.20", "uvicorn", "fastapi", "joblib", "av>=13"])
 subprocess.call([sys.executable, "-m", "pip", "install", "-q", "-U", "transformers", "accelerate"])   # LLM grammar/semantic review (GPU only)
+subprocess.call([sys.executable, "-m", "pip", "install", "-q", "librosa"])   # doctor/patient separation (optional: without it the whole recording is analysed)
+subprocess.call([sys.executable, "-m", "pip", "install", "-q", "--no-deps", "resemblyzer"])
 for vad in ("webrtcvad-wheels", "webrtcvad"):   # optional: app.py falls back to no pause detection without it
     if subprocess.call([sys.executable, "-m", "pip", "install", "-q", vad]) == 0:
         break

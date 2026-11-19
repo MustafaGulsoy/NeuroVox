@@ -20,6 +20,10 @@ namespace NeuroVox.Domain.Entities
         public string? TranscriptText { get; set; }
         public string? TranscriptSource { get; set; }
         public string? TranscriberVersion { get; set; }
+        // Interviewer ("doctor") speech to leave out of the analysis: JSON [{"start":1.2,"end":4.5},...] in seconds.
+        // Source "auto" = detected by the AI host (replaced on re-analysis); "manual" = set by a therapist (always wins, never auto-overwritten).
+        public string? DoctorSegmentsJson { get; set; }
+        public string? DoctorSegmentsSource { get; set; }
         public AnalysisStatus AnalysisStatus { get; set; } = AnalysisStatus.None;
         public string? AnalysisError { get; set; }
         public DateTime? AnalyzedAt { get; set; }

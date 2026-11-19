@@ -81,7 +81,7 @@ namespace NeuroVox.WebApi.Services
 
         /// <summary>Identifies the AI sources a kernel runs, so kernels running older code can be replaced.</summary>
         public static string CurrentVersion { get; } = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Concat(
-            new[] { "ai/app.py", "ai/turkish_nlp.py", "ai/stats.py", "ai/llm_review.py", "ai/train.py", "ai/kernel_template.py" }.Select(Resource))))) [..12];
+            new[] { "ai/app.py", "ai/turkish_nlp.py", "ai/stats.py", "ai/llm_review.py", "ai/diarize.py", "ai/train.py", "ai/kernel_template.py" }.Select(Resource))))) [..12];
 
         /// <summary>A free host, or null when every host is busy/offline (the caller keeps the job queued).</summary>
         public async Task<AiLease?> TryLeaseAsync(Guid customerId, CancellationToken ct)
@@ -157,6 +157,7 @@ namespace NeuroVox.WebApi.Services
                 ["turkish_nlp.py"] = Pack(Resource("ai/turkish_nlp.py")),
                 ["stats.py"] = Pack(Resource("ai/stats.py")),
                 ["llm_review.py"] = Pack(Resource("ai/llm_review.py")),
+                ["diarize.py"] = Pack(Resource("ai/diarize.py")),
                 ["train.py"] = Pack(Resource("ai/train.py"))
             });
             return Resource("ai/kernel_template.py")

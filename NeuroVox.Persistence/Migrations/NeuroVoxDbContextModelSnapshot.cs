@@ -586,6 +586,12 @@ namespace NeuroVox.Persistence.Migrations
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DoctorSegmentsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DoctorSegmentsSource")
+                        .HasColumnType("text");
+
                     b.Property<string>("InstructionVersion")
                         .IsRequired()
                         .HasColumnType("text");

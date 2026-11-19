@@ -18,8 +18,10 @@ namespace NeuroVox.WebApi.Services
             return r;
         }
 
-        public async Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId)
+        public async Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId, IReadOnlyList<SegmentDto>? excludeDoctor = null)
         {
+            // null -> the host detects the doctor itself (diarize); a list (even empty) -> exactly those ranges are cut.
+            var exclude = excludeDoctor?.Select(s => new[] { s.Start, s.End }).ToList();
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 try
@@ -29,12 +31,16 @@ namespace NeuroVox.WebApi.Services
                     if (host.Upload)
                     {
                         fs = File.OpenRead(audio.Resolve(audioFilePath));
-                        req = Req(host, "analyze-upload", new MultipartFormDataContent { { new StreamContent(fs), "file", Path.GetFileName(audioFilePath) }, { new StringContent("tr"), "language" } });
+                        var form = new MultipartFormDataContent { { new StreamContent(fs), "file", Path.GetFileName(audioFilePath) }, { new StringContent("tr"), "language" },
+                            { new StringContent(exclude is null ? "true" : "false"), "diarize" } };
+                        if (exclude is not null) form.Add(new StringContent(JsonSerializer.Serialize(exclude)), "exclude_segments");
+                        req = Req(host, "analyze-upload", form);
                     }
                     else
-                        req = Req(host, "analyze", JsonContent.Create(new Dictionary<string, object>
+                        req = Req(host, "analyze", JsonContent.Create(new Dictionary<string, object?>
                         {
-                            ["audio_path"] = audioFilePath, ["customer_id"] = customerId, ["visit_id"] = visitId, ["recording_id"] = recordingId, ["language"] = "tr"
+                            ["audio_path"] = audioFilePath, ["customer_id"] = customerId, ["visit_id"] = visitId, ["recording_id"] = recordingId, ["language"] = "tr",
+                            ["diarize"] = exclude is null, ["exclude_segments"] = exclude
                         }, options: JsonOptions));
                     using (req)
                     using (fs)

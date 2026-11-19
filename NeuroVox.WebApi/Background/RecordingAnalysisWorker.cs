@@ -150,7 +150,9 @@ namespace NeuroVox.WebApi.Background
             await db.SaveChangesAsync(ct);
 
             AnalysisResult? result;
-            try { result = await client.AnalyzeAsync(lease.Host, rec.AudioFilePath, rec.CustomerId, rec.VisitId, rec.Id); }
+            // Therapist-set doctor ranges win; without them the host detects the doctor automatically.
+            var manual = rec.DoctorSegmentsSource == "manual" ? DoctorSegments.Parse(rec.DoctorSegmentsJson) : null;
+            try { result = await client.AnalyzeAsync(lease.Host, rec.AudioFilePath, rec.CustomerId, rec.VisitId, rec.Id, manual); }
             catch (HttpRequestException)
             {
                 // A fresh Kaggle tunnel can take minutes to resolve: stay queued and retry instead of failing the recording.
@@ -173,6 +175,12 @@ namespace NeuroVox.WebApi.Background
                 rec.TranscriptSource = "faster-whisper";
                 rec.TranscriberVersion = result.SttModelVersion;
                 rec.SpeechDurationSeconds = result.SpeechDurationSeconds;
+            }
+
+            if (manual is null && result.DoctorSource == "auto")   // auto result is only a suggestion for the therapist to correct
+            {
+                rec.DoctorSegmentsJson = DoctorSegments.ToJson(result.DoctorSegments ?? []);
+                rec.DoctorSegmentsSource = "auto";
             }
 
             var participantId = await db.StudyVisits.IgnoreQueryFilters()

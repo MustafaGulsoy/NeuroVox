@@ -14,6 +14,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadF
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+import diarize
 import llm_review
 import stats
 import turkish_nlp
@@ -69,6 +70,8 @@ class AnalyzeRequest(BaseModel):
     recording_id: str | None = None
     language: str = "tr"
     information_units: list[str] | None = None
+    exclude_segments: list[list[float]] | None = None   # doctor ranges [start, end] to cut out; [] = cut nothing
+    diarize: bool = False                                  # no ranges given: detect the doctor automatically
 
 
 VAGUE_TOKENS = ["şey", "yani", "falan", "filan", "bir şey", "öyle", "şöyle"]
@@ -220,7 +223,8 @@ def analyze(req: AnalyzeRequest):
 
 # Remote mode (no shared volume): the API uploads the audio bytes instead of a file name.
 @app.post("/analyze-upload", dependencies=[Depends(require_key)])
-def analyze_upload(file: UploadFile = File(...), language: str = Form("tr"), information_units: str | None = Form(None)):
+def analyze_upload(file: UploadFile = File(...), language: str = Form("tr"), information_units: str | None = Form(None),
+                   exclude_segments: str | None = Form(None), diarize: bool = Form(False)):
     import json
     units = json.loads(information_units) if information_units else None
     with tempfile.TemporaryDirectory() as d:
@@ -228,7 +232,8 @@ def analyze_upload(file: UploadFile = File(...), language: str = Form("tr"), inf
         with open(path, "wb") as f:
             while chunk := file.file.read(1 << 20):
                 f.write(chunk)
-        return _analyze(path, AnalyzeRequest(audio_path="upload", language=language, information_units=units))
+        return _analyze(path, AnalyzeRequest(audio_path="upload", language=language, information_units=units,
+                                             exclude_segments=json.loads(exclude_segments) if exclude_segments else None, diarize=diarize))
 
 
 def _analyze(audio_file: Path, req: AnalyzeRequest):
@@ -236,6 +241,16 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         audio = decode_audio_16k(str(audio_file))
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"audio could not be decoded: {type(e).__name__}: {str(e)[:160]}")
+    full_s = len(audio) / 16000
+    doctor, doctor_source = [], None   # interviewer speech is cut out so only the patient is measured
+    if req.exclude_segments is not None:
+        doctor, doctor_source = [(s, e) for s, e in req.exclude_segments], "manual"
+    elif req.diarize:
+        found = diarize.find_doctor_segments(audio)
+        if found is not None:   # [] = one speaker detected: still reported, so stale auto ranges get cleared
+            doctor, doctor_source = [(d["start"], d["end"]) for d in found], "auto"
+    if doctor:
+        audio = diarize.cut(audio, doctor)
     total_s = len(audio) / 16000
     vad = vad_pause_stats(audio)
 
@@ -273,7 +288,8 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         measurement("total_words", lex["total_words"], unit="count"),
         measurement("total_utterances", utterances, unit="count"),
         measurement("speech_duration_seconds", speech_s, unit="seconds"),
-        measurement("total_recording_duration_seconds", round(total_s, 2), unit="seconds"),
+        measurement("total_recording_duration_seconds", round(full_s, 2), unit="seconds"),
+        measurement("doctor_excluded_seconds", round(full_s - total_s, 2) if doctor else 0.0, unit="seconds", text=doctor_source),
         measurement("pause_duration_seconds", vad["pause_duration_seconds"], unit="seconds"),
         measurement("pause_ratio", vad["pause_ratio"], unit="ratio"),
         measurement("speech_rate_wps", round(lex["total_words"] / speech_s, 3) if speech_s > 0 else None, unit="words/second"),
@@ -311,6 +327,8 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         "stt_language": info.language if info else req.language,
         "speech_duration_seconds": speech_s,
         "measurements": measurement_list,
+        "doctor_segments": [{"start": s, "end": e} for s, e in doctor] if doctor_source == "auto" else None,
+        "doctor_source": doctor_source if doctor_source == "auto" else None,   # manual ranges already live in the API
     }
 
 

@@ -20,11 +20,16 @@ namespace NeuroVox.WebApi.Services
         public string? SttLanguage { get; set; }
         public double? SpeechDurationSeconds { get; set; }
         public List<MeasurementDto> Measurements { get; set; } = new();
+        public List<SegmentDto>? DoctorSegments { get; set; }
+        public string? DoctorSource { get; set; }   // "auto" when the host detected the doctor itself
     }
+
+    public record SegmentDto(double Start, double End);
 
     public interface ISpeechAnalysisClient
     {
-        Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId);
+        /// <param name="excludeDoctor">Therapist-set doctor ranges to cut out (empty = nothing to cut); null = let the host detect the doctor.</param>
+        Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId, IReadOnlyList<SegmentDto>? excludeDoctor = null);
         /// <summary>Trains on the host; returns the artifact zip, or the reason it failed.</summary>
         Task<(byte[]? Zip, string? Error)> TrainAsync(AiHost host, string csv);
                 /// <summary>Two-group statistics (numbers only) from any online AI host: {feature: {a:[..], b:[..]}} -> {results:[..]}.</summary>

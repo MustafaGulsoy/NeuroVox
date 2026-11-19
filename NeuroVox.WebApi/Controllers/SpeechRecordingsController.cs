@@ -96,7 +96,8 @@ namespace NeuroVox.WebApi.Controllers
             r.Id, r.VisitId, r.StimulusId, r.StimulusVersion, r.InstructionVersion, r.RecordingDurationSeconds,
             r.SpeechDurationSeconds, r.RecordingEnvironment, r.MicrophoneDevice, r.AudioQuality,
             HasAudio = r.AudioFilePath != null, r.TranscriptText, r.TranscriptSource, r.TranscriberVersion,
-            r.AnalysisStatus, r.AnalysisError, r.AnalyzedAt
+            r.AnalysisStatus, r.AnalysisError, r.AnalyzedAt,
+            DoctorSegments = DoctorSegments.Parse(r.DoctorSegmentsJson), r.DoctorSegmentsSource
         };
 
         [HttpPost]
@@ -242,6 +243,26 @@ namespace NeuroVox.WebApi.Controllers
             rec.TranscriptText = string.IsNullOrWhiteSpace(body.Text) ? null : System.Text.RegularExpressions.Regex.Replace(body.Text.Trim(), @"[ \t]{2,}", " ");
             rec.TranscriptSource = "manual";
             await _write.SaveAsync();
+            return Ok(ToDto(rec));
+        }
+
+        public class DoctorSegmentsRequest { public List<SegmentDto>? Segments { get; set; } public bool Reanalyze { get; set; } }
+
+        // Therapist marks which ranges are the doctor's voice; they are cut out of the analysis ("manual" wins over auto-detection).
+        // An empty list means "no doctor in this recording". Needs the auth."Endpoints" row from deploy/endpoint-delete-annotations.sql.
+        [HttpPut("{id}/doctor-segments")]
+        [AuthorizeDefinition(Menu = "NeuroVox", Definition = "Put SpeechRecordingDoctorSegments", ActionType = ActionType.Updating)]
+        public async Task<IActionResult> PutDoctorSegments(Guid id, [FromBody] DoctorSegmentsRequest body)
+        {
+            var rec = _read.GetWhere(r => r.Id == id && !r.RowIsDeleted).FirstOrDefault();
+            if (rec is null) return NotFound();
+            rec.DoctorSegmentsJson = DoctorSegments.ToJson(DoctorSegments.Normalize(body.Segments ?? [], rec.RecordingDurationSeconds));
+            rec.DoctorSegmentsSource = "manual";
+            var queue = body.Reanalyze && !string.IsNullOrWhiteSpace(rec.AudioFilePath)
+                && rec.AnalysisStatus is not (AnalysisStatus.Queued or AnalysisStatus.Running);
+            if (queue) { rec.AnalysisStatus = AnalysisStatus.Queued; rec.AnalysisError = null; }
+            await _write.SaveAsync();
+            if (queue) await _queue.EnqueueAsync(rec.Id);
             return Ok(ToDto(rec));
         }
 
