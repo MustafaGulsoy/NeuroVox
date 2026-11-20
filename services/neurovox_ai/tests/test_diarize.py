@@ -19,14 +19,23 @@ def test_cut_nothing_and_everything():
     assert len(diarize.cut(a, [(0, 1)])) == 0
 
 
-def test_two_speakers_cluster_and_longer_talker_is_doctor():
+def test_two_speakers_cluster_and_first_speaker_is_doctor():
     rng = np.random.default_rng(0)
     a, b = rng.normal(size=64), rng.normal(size=64)
-    emb = np.stack([a + rng.normal(scale=.05, size=64) for _ in range(6)] + [b + rng.normal(scale=.05, size=64) for _ in range(2)])
+    emb = np.stack([a + rng.normal(scale=.05, size=64) for _ in range(3)] + [b + rng.normal(scale=.05, size=64) for _ in range(5)])
     labels = diarize.cluster_two(emb)
     assert labels is not None
-    turns = [(i * 3.0, i * 3.0 + 2.0) for i in range(8)]   # equal-length turns: 6 of speaker a, 2 of speaker b
-    assert diarize.doctor_ranges(turns, labels) == turns[:6]
+    spans = [(i * 1.0, i * 1.0 + 1.0) for i in range(8)]   # speaker a talks first (3 s), speaker b afterwards (5 s): a is the doctor
+    assert diarize.doctor_ranges(spans, labels) == [(0.0, 3.0)]   # touching windows are joined
+
+
+def test_doctor_with_most_of_the_speech_is_distrusted():
+    labels = np.array([0, 0, 0, 0, 0, 0, 1, 1])   # the first speaker holds 75% -> probably the wrong role
+    assert diarize.doctor_ranges([(i * 1.0, i * 1.0 + 1.0) for i in range(8)], labels) == []
+
+
+def test_windows_split_long_turns_only():
+    assert diarize.windows([(0, 0.8), (1, 4)]) == [(0, 0.8), (1, 2), (2, 3), (3, 4)]
 
 
 def test_one_speaker_or_too_few_turns_is_not_split():

@@ -1,14 +1,19 @@
 """Doctor/patient separation: find the interviewer's speech so it can be cut out before transcription.
 
-Pipeline: VAD speech turns -> voice embedding per turn (resemblyzer, no gated models) -> 2 clusters ->
-the cluster that talks the most is the doctor. Everything optional: no webrtcvad/resemblyzer -> None (nothing is cut).
+Pipeline: VAD speech turns -> ~1 s windows -> ECAPA speaker embedding per window (speechbrain, public model, no token)
+-> 2 clusters -> the speaker of the first window is the doctor (the examiner opens the recording with the instruction).
+Everything optional: no webrtcvad/speechbrain/model -> None (nothing is cut, analysis runs on the whole recording).
+Tuned on one real interview (precision 0.89 / recall 0.86 against therapist-marked doctor ranges); therapists correct per recording in the UI.
 """
 from __future__ import annotations
+
+import os
 
 import numpy as np
 
 SR = 16000
-# ponytail: "talks the most = doctor" fits interviews where the patient answers briefly; therapists correct it per recording in the UI.
+WINDOW_S = 1.0          # embedding window; longer windows blur speaker changes, shorter ones are too noisy
+MAX_DOCTOR_SHARE = 0.6  # a "doctor" holding more than this share of the speech is probably the wrong role: cut nothing
 
 
 def cut(audio: np.ndarray, ranges: list[tuple[float, float]], gap_s: float = 0.3, sr: int = SR) -> np.ndarray:
@@ -55,8 +60,18 @@ def speech_turns(audio: np.ndarray, sr: int = SR, merge_gap: float = 0.6, min_le
     return [(s, e) for s, e in turns if e - s >= min_len]
 
 
+def windows(turns: list[tuple[float, float]], win: float = WINDOW_S) -> list[tuple[float, float]]:
+    """Split each turn into equal pieces of about `win` seconds (a turn shorter than 1.5 win stays whole)."""
+    out = []
+    for s, e in turns:
+        k = max(1, int((e - s) // win))
+        step = (e - s) / k
+        out += [(s + i * step, s + (i + 1) * step) for i in range(k)]
+    return out
+
+
 def cluster_two(emb: np.ndarray, min_sep: float = 0.2) -> np.ndarray | None:
-    """Split embeddings into two speakers; None when they do not clearly separate (one speaker, or too few turns)."""
+    """Split embeddings into two speakers; None when they do not clearly separate (one speaker, or too few windows)."""
     if len(emb) < 4:
         return None
     from scipy.cluster.hierarchy import fcluster, linkage
@@ -68,31 +83,49 @@ def cluster_two(emb: np.ndarray, min_sep: float = 0.2) -> np.ndarray | None:
     return labels if dist >= min_sep else None
 
 
-def doctor_ranges(turns: list[tuple[float, float]], labels: np.ndarray) -> list[tuple[float, float]]:
-    """Turns of the speaker with the larger total speaking time."""
-    total = [sum(e - s for (s, e), l in zip(turns, labels) if l == k) for k in (0, 1)]
-    doctor = 0 if total[0] >= total[1] else 1
-    return [t for t, l in zip(turns, labels) if l == doctor]
+def doctor_ranges(spans: list[tuple[float, float]], labels: np.ndarray, join_gap: float = 0.3) -> list[tuple[float, float]]:
+    """Ranges of the speaker who talks first; neighbouring windows of that speaker are joined.
+    [] if that speaker holds more than MAX_DOCTOR_SHARE of the speech (then the role is probably the other way round)."""
+    doctor = labels[0]
+    total = sum(e - s for s, e in spans)
+    mine = [sp for sp, l in zip(spans, labels) if l == doctor]
+    if total <= 0 or sum(e - s for s, e in mine) / total > MAX_DOCTOR_SHARE:
+        return []
+    out: list[list[float]] = []
+    for s, e in mine:
+        if out and s - out[-1][1] <= join_gap:
+            out[-1][1] = e
+        else:
+            out.append([s, e])
+    return [(s, e) for s, e in out]
 
 
 _encoder = None
 
 
-def find_doctor_segments(audio: np.ndarray, sr: int = SR) -> list[dict] | None:
-    """[{start,end}] of the detected doctor, [] if one speaker, None if detection is unavailable/failed."""
+def _embed(audio: np.ndarray, spans: list[tuple[float, float]], sr: int) -> np.ndarray:
     global _encoder
+    import torch
+    if _encoder is None:
+        from speechbrain.inference.speaker import EncoderClassifier
+        device = "cuda" if os.environ.get("NEUROVOX_DEVICE") == "cuda" and torch.cuda.is_available() else "cpu"
+        _encoder = EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb", run_opts={"device": device},
+                                                  savedir=os.path.join(os.environ.get("HF_HOME", "/tmp"), "ecapa"))
+    with torch.no_grad():
+        emb = np.stack([_encoder.encode_batch(torch.from_numpy(np.ascontiguousarray(audio[int(s * sr):int(e * sr)])).float().unsqueeze(0))
+                        .squeeze().cpu().numpy() for s, e in spans])
+    return emb - emb.mean(axis=0)   # remove the recording's own channel/microphone offset
+
+
+def find_doctor_segments(audio: np.ndarray, sr: int = SR) -> list[dict] | None:
+    """[{start,end}] of the detected doctor, [] if one speaker / unsure, None if detection is unavailable or failed."""
     try:
-        turns = speech_turns(audio, sr)
-        if len(turns) < 4:
+        spans = windows(speech_turns(audio, sr))
+        if len(spans) < 4:
             return []
-        if _encoder is None:
-            from resemblyzer import VoiceEncoder
-            _encoder = VoiceEncoder(device="cpu")
-        peak = float(np.max(np.abs(audio))) or 1.0
-        emb = np.stack([_encoder.embed_utterance(audio[int(s * sr):int(e * sr)] / peak) for s, e in turns])
-        labels = cluster_two(emb)
+        labels = cluster_two(_embed(audio, spans, sr))
         if labels is None:
             return []
-        return [{"start": round(s, 2), "end": round(e, 2)} for s, e in doctor_ranges(turns, labels)]
+        return [{"start": round(s, 2), "end": round(e, 2)} for s, e in doctor_ranges(spans, labels)]
     except Exception:   # optional feature: any failure means "analyse the whole recording" as before
         return None

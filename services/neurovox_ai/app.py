@@ -249,10 +249,12 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         found = diarize.find_doctor_segments(audio)
         if found is not None:   # [] = one speaker detected: still reported, so stale auto ranges get cleared
             doctor, doctor_source = [(d["start"], d["end"]) for d in found], "auto"
+    vad_audio = audio
     if doctor:
-        audio = diarize.cut(audio, doctor)
-    total_s = len(audio) / 16000
-    vad = vad_pause_stats(audio)
+        vad_audio = diarize.cut(audio, doctor, gap_s=0.0)   # no padding here: the VAD counts digital silence as speech
+        audio = diarize.cut(audio, doctor)                  # a short gap only for Whisper, so cut sentences do not run together
+    total_s = len(vad_audio) / 16000
+    vad = vad_pause_stats(vad_audio)
 
     model = get_whisper()
     segments_iter, info = model.transcribe(audio, language=req.language, beam_size=5)
