@@ -127,5 +127,7 @@ def find_doctor_segments(audio: np.ndarray, sr: int = SR) -> list[dict] | None:
         if labels is None:
             return []
         return [{"start": round(s, 2), "end": round(e, 2)} for s, e in doctor_ranges(spans, labels)]
-    except Exception:   # optional feature: any failure means "analyse the whole recording" as before
+    except Exception as e:   # optional feature: any failure means "analyse the whole recording" as before
+        import sys
+        print(f"diarize failed: {type(e).__name__}: {e}", file=sys.stderr)
         return None

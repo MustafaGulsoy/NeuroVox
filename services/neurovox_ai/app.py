@@ -249,17 +249,23 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         found = diarize.find_doctor_segments(audio)
         if found is not None:   # [] = one speaker detected: still reported, so stale auto ranges get cleared
             doctor, doctor_source = [(d["start"], d["end"]) for d in found], "auto"
-    vad_audio = audio
-    if doctor:
-        vad_audio = diarize.cut(audio, doctor, gap_s=0.0)   # no padding here: the VAD counts digital silence as speech
-        audio = diarize.cut(audio, doctor)                  # a short gap only for Whisper, so cut sentences do not run together
+    vad_audio = diarize.cut(audio, doctor, gap_s=0.0) if doctor else audio   # no padding here: the VAD counts digital silence as speech
     total_s = len(vad_audio) / 16000
     vad = vad_pause_stats(vad_audio)
 
+    # One pass over the whole recording (cutting the doctor first made Whisper loop on the stitched audio, and left no trace of
+    # who said what). Word times let the UI label Doktor/Hasta; the measured text is only the words outside the doctor ranges.
     model = get_whisper()
-    segments_iter, info = model.transcribe(audio, language=req.language, beam_size=5)
-    segments = list(segments_iter)
-    text = " ".join(s.text.strip() for s in segments).strip()   # whisper segments start with a space: joining raw gave double spaces
+    all_segments = list(model.transcribe(audio, language=req.language, beam_size=5, word_timestamps=True)[0])
+
+    def is_doctor(w) -> bool:
+        mid = (w.start + w.end) / 2
+        return any(s <= mid < e for s, e in doctor)
+
+    words = [w for seg in all_segments for w in (seg.words or []) if w.word.strip()]
+    segments = [seg for seg in all_segments if any(not is_doctor(w) for w in (seg.words or []))] if doctor else all_segments
+    text = " ".join(w.word.strip() for w in words if not is_doctor(w)).strip()
+    word_list = [{"s": round(w.start, 2), "e": round(w.end, 2), "w": w.word.strip()} for w in words]
 
     lex = lexical_metrics(text)
     utterances = count_utterances(segments, text)
@@ -291,7 +297,7 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         measurement("total_utterances", utterances, unit="count"),
         measurement("speech_duration_seconds", speech_s, unit="seconds"),
         measurement("total_recording_duration_seconds", round(full_s, 2), unit="seconds"),
-        measurement("doctor_excluded_seconds", round(full_s - total_s, 2) if doctor else 0.0, unit="seconds", text=doctor_source),
+        measurement("doctor_excluded_seconds", round(full_s - total_s, 2) if doctor else 0.0, unit="seconds", text=doctor_source or ("unavailable" if req.diarize else "off")),
         measurement("pause_duration_seconds", vad["pause_duration_seconds"], unit="seconds"),
         measurement("pause_ratio", vad["pause_ratio"], unit="ratio"),
         measurement("speech_rate_wps", round(lex["total_words"] / speech_s, 3) if speech_s > 0 else None, unit="words/second"),
@@ -326,7 +332,8 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
     return {
         "transcript": text,
         "stt_model_version": f"faster-whisper/{MODEL_SIZE}",
-        "stt_language": info.language if info else req.language,
+        "stt_language": req.language,
+        "words": word_list,
         "speech_duration_seconds": speech_s,
         "measurements": measurement_list,
         "doctor_segments": [{"start": s, "end": e} for s, e in doctor] if doctor_source == "auto" else None,

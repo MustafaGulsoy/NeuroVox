@@ -1,4 +1,4 @@
-import { Component, ElementRef, OnDestroy, OnInit, inject, input, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, computed, OnInit, inject, input, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
@@ -126,6 +126,10 @@ const PEAKS = 6000;
                   <button class="btn primary" type="button" (click)="saveText()" [disabled]="busy()">Kaydet</button>
                   <button class="btn" type="button" (click)="editing.set(false)">Vazgeç</button>
                 </div>
+              } @else if (turns().length) {
+                @for (t of turns(); track $index) {
+                  <p style="line-height:1.7;margin:0 0 8px"><b [style.color]="t.doctor ? '#b45309' : 'inherit'">{{ t.doctor ? 'Doktor' : 'Hasta' }}</b> <span class="muted">{{ fmtTime(t.start) }}</span> · {{ t.text }}</p>
+                }
               } @else if (rec()!.transcriptText) { <p style="white-space:pre-wrap;line-height:1.7">{{ rec()!.transcriptText }}</p> }
               @else { <p class="muted">Transkript henüz yok. Kayıtlar sayfasından analizi başlatın ya da elle yazın.</p> }
             </section>
@@ -183,6 +187,20 @@ export class AnnotatePage implements OnInit, OnDestroy {
   anns = signal<Annotation[]>([]);
   doctor = signal<{ start: number; end: number }[]>([]);
   doctorDirty = signal(false);
+  // Transcript as turns: consecutive words by the same speaker; a word is the doctor's when its midpoint is inside a doctor range.
+  turns = computed(() => {
+    const r = this.rec();
+    if (!r?.words?.length || r.transcriptSource === 'manual') return [];   // a hand-corrected text no longer matches the word list
+    const out: { doctor: boolean; start: number; text: string }[] = [];
+    for (const w of r.words) {
+      const mid = (w.s + w.e) / 2;
+      const doctor = this.doctor().some(d => mid >= d.start && mid < d.end);
+      const last = out[out.length - 1];
+      if (last && last.doctor === doctor) last.text += ' ' + w.w; else out.push({ doctor, start: w.s, text: w.w });
+    }
+    return out;
+  });
+  fmtTime = fmtDuration;
   audioUrl = signal<string | null>(null);
   busy = signal(false);
   playing = signal(false);

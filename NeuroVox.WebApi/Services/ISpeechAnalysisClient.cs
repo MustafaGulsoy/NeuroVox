@@ -13,6 +13,8 @@ namespace NeuroVox.WebApi.Services
         public bool IsCandidateAnnotation { get; set; } = true;
     }
 
+    public record WordDto(double S, double E, string W);
+
     public class AnalysisResult
     {
         public string? Transcript { get; set; }
@@ -21,6 +23,7 @@ namespace NeuroVox.WebApi.Services
         public double? SpeechDurationSeconds { get; set; }
         public List<MeasurementDto> Measurements { get; set; } = new();
         public List<SegmentDto>? DoctorSegments { get; set; }
+        public List<WordDto>? Words { get; set; }
         public string? DoctorSource { get; set; }   // "auto" when the host detected the doctor itself
     }
 

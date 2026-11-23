@@ -24,6 +24,7 @@ namespace NeuroVox.Domain.Entities
         // Source "auto" = detected by the AI host (replaced on re-analysis); "manual" = set by a therapist (always wins, never auto-overwritten).
         public string? DoctorSegmentsJson { get; set; }
         public string? DoctorSegmentsSource { get; set; }
+        public string? TranscriptWordsJson { get; set; }   // [{s,e,w}] every word with its time, doctor included; the UI labels Doktor/Hasta from DoctorSegmentsJson
         public AnalysisStatus AnalysisStatus { get; set; } = AnalysisStatus.None;
         public string? AnalysisError { get; set; }
         public DateTime? AnalyzedAt { get; set; }

@@ -636,6 +636,9 @@ namespace NeuroVox.Persistence.Migrations
                     b.Property<string>("TranscriptText")
                         .HasColumnType("text");
 
+                    b.Property<string>("TranscriptWordsJson")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("VisitId")
                         .HasColumnType("uuid");
 

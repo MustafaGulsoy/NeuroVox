@@ -102,3 +102,17 @@ def test_predict_imputes_missing_features_but_needs_at_least_half(app_module, tm
     partial = c.post("/predict", json={"features": {"f1": 1.0, "ace_total": -1.0}}, headers=h)   # 2 of 3 -> imputed
     assert partial.status_code == 200
     assert c.post("/predict", json={"features": {"f1": 1.0}}, headers=h).status_code == 422       # 1 of 3 -> refused
+
+
+def test_analyze_labels_words_and_measures_only_patient(app_module, monkeypatch):
+    import numpy as np
+    from types import SimpleNamespace as NS
+    app = app_module
+    w = lambda s, e, t: NS(start=s, end=e, word=f" {t}")
+    segs = [NS(start=0, end=3, text="", words=[w(0, 1, "Anlat"), w(1, 2, "bakalım")]),   # doctor, 0-3 s
+            NS(start=4, end=7, text="", words=[w(4, 5, "Çocuk"), w(5, 6, "bahçede")])]
+    monkeypatch.setattr(app, "decode_audio_16k", lambda p: np.zeros(16000 * 8, dtype=np.float32))
+    monkeypatch.setattr(app, "get_whisper", lambda: NS(transcribe=lambda *a, **k: (iter(segs), None)))
+    r = app._analyze(Path("x.wav"), app.AnalyzeRequest(audio_path="x.wav", exclude_segments=[[0, 3]]))
+    assert r["transcript"] == "Çocuk bahçede"
+    assert [x["w"] for x in r["words"]] == ["Anlat", "bakalım", "Çocuk", "bahçede"]

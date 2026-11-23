@@ -97,7 +97,8 @@ namespace NeuroVox.WebApi.Controllers
             r.SpeechDurationSeconds, r.RecordingEnvironment, r.MicrophoneDevice, r.AudioQuality,
             HasAudio = r.AudioFilePath != null, r.TranscriptText, r.TranscriptSource, r.TranscriberVersion,
             r.AnalysisStatus, r.AnalysisError, r.AnalyzedAt,
-            DoctorSegments = DoctorSegments.Parse(r.DoctorSegmentsJson), r.DoctorSegmentsSource
+            DoctorSegments = DoctorSegments.Parse(r.DoctorSegmentsJson), r.DoctorSegmentsSource,
+            Words = r.TranscriptWordsJson is null ? null : (System.Text.Json.JsonElement?)System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(r.TranscriptWordsJson)
         };
 
         [HttpPost]

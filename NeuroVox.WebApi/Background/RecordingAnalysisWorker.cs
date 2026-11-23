@@ -177,6 +177,8 @@ namespace NeuroVox.WebApi.Background
                 rec.SpeechDurationSeconds = result.SpeechDurationSeconds;
             }
 
+            if (result.Words is { Count: > 0 }) rec.TranscriptWordsJson = System.Text.Json.JsonSerializer.Serialize(result.Words, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));   // timing only, independent of a hand-corrected transcript
+
             if (manual is null && result.DoctorSource == "auto")   // auto result is only a suggestion for the therapist to correct
             {
                 rec.DoctorSegmentsJson = DoctorSegments.ToJson(result.DoctorSegments ?? []);
