@@ -18,7 +18,7 @@ namespace NeuroVox.WebApi.Services
             return r;
         }
 
-        public async Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId, IReadOnlyList<SegmentDto>? excludeDoctor = null)
+        public async Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId, IReadOnlyList<SegmentDto>? excludeDoctor = null, int? expectedSpeakers = null)
         {
             // null -> the host detects the doctor itself (diarize); a list (even empty) -> exactly those ranges are cut.
             var exclude = excludeDoctor?.Select(s => new[] { s.Start, s.End }).ToList();
@@ -32,7 +32,8 @@ namespace NeuroVox.WebApi.Services
                     {
                         fs = File.OpenRead(audio.Resolve(audioFilePath));
                         var form = new MultipartFormDataContent { { new StreamContent(fs), "file", Path.GetFileName(audioFilePath) }, { new StringContent("tr"), "language" },
-                            { new StringContent(exclude is null ? "true" : "false"), "diarize" } };
+                            { new StringContent("true"), "diarize" } };
+                        if (expectedSpeakers is not null) form.Add(new StringContent(expectedSpeakers.Value.ToString()), "num_speakers");
                         if (exclude is not null) form.Add(new StringContent(JsonSerializer.Serialize(exclude)), "exclude_segments");
                         req = Req(host, "analyze-upload", form);
                     }
@@ -40,7 +41,7 @@ namespace NeuroVox.WebApi.Services
                         req = Req(host, "analyze", JsonContent.Create(new Dictionary<string, object?>
                         {
                             ["audio_path"] = audioFilePath, ["customer_id"] = customerId, ["visit_id"] = visitId, ["recording_id"] = recordingId, ["language"] = "tr",
-                            ["diarize"] = exclude is null, ["exclude_segments"] = exclude
+                            ["diarize"] = true, ["num_speakers"] = expectedSpeakers, ["exclude_segments"] = exclude
                         }, options: JsonOptions));
                     using (req)
                     using (fs)

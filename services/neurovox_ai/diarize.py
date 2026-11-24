@@ -117,17 +117,67 @@ def _embed(audio: np.ndarray, spans: list[tuple[float, float]], sr: int) -> np.n
     return emb - emb.mean(axis=0)   # remove the recording's own channel/microphone offset
 
 
-def find_doctor_segments(audio: np.ndarray, sr: int = SR) -> list[dict] | None:
-    """[{start,end}] of the detected doctor, [] if one speaker / unsure, None if detection is unavailable or failed."""
-    try:
-        spans = windows(speech_turns(audio, sr))
-        if len(spans) < 4:
-            return []
-        labels = cluster_two(_embed(audio, spans, sr))
-        if labels is None:
-            return []
-        return [{"start": round(s, 2), "end": round(e, 2)} for s, e in doctor_ranges(spans, labels)]
-    except Exception as e:   # optional feature: any failure means "analyse the whole recording" as before
-        import sys
-        print(f"diarize failed: {type(e).__name__}: {e}", file=sys.stderr)
+def _turns(spans: list[tuple[float, float]], labels, join_gap: float = 0.3) -> list[dict]:
+    """Neighbouring spans of one speaker joined into turns; speakers numbered 0.. by first appearance."""
+    order: dict = {}
+    out: list[dict] = []
+    for (s, e), l in sorted(zip(spans, labels), key=lambda x: x[0][0]):
+        k = order.setdefault(l, len(order))
+        if out and out[-1]["speaker"] == k and s - out[-1]["end"] <= join_gap:
+            out[-1]["end"] = round(e, 2)
+        else:
+            out.append({"start": round(s, 2), "end": round(e, 2), "speaker": k})
+    return out
+
+
+def _ecapa_turns(audio: np.ndarray, sr: int) -> list[dict] | None:
+    """Two speakers at most (clustering is tuned for doctor + patient). [] = one speaker or too little speech."""
+    spans = windows(speech_turns(audio, sr))
+    if len(spans) < 4:
+        return []
+    labels = cluster_two(_embed(audio, spans, sr))
+    return [] if labels is None else _turns(spans, labels)
+
+
+_pyannote = None
+
+
+def _pyannote_turns(audio: np.ndarray, sr: int, n: int | None = None) -> list[dict] | None:
+    """Any number of speakers (pyannote 3.1 pipeline, gated model: needs HF_TOKEN). None when not configured."""
+    global _pyannote
+    token = os.environ.get("HF_TOKEN")
+    if not token:
         return None
+    import torch
+    if _pyannote is None:
+        from pyannote.audio import Pipeline
+        try:
+            pipe = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=token)
+        except TypeError:   # pyannote.audio < 4 spells it use_auth_token
+            pipe = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=token)
+        if os.environ.get("NEUROVOX_DEVICE") == "cuda" and torch.cuda.is_available():
+            pipe.to(torch.device("cuda"))
+        _pyannote = pipe
+    out = _pyannote({"waveform": torch.from_numpy(np.ascontiguousarray(audio)).float().unsqueeze(0), "sample_rate": sr}, num_speakers=n or 2)   # left free it splits one quiet speaker into several: the therapist says how many people talk
+    dia = getattr(out, "exclusive_speaker_diarization", None) or getattr(out, "speaker_diarization", out)   # exclusive: nobody overlaps
+    raw = [(t.start, t.end, spk) for t, _, spk in dia.itertracks(yield_label=True) if t.end - t.start >= 0.3]
+    return _turns([(s, e) for s, e, _ in raw], [k for *_, k in raw])
+
+
+def find_speakers(audio: np.ndarray, sr: int = SR, n: int | None = None) -> dict | None:
+    """{"turns": [{start,end,speaker}], "doctor": [{start,end}], "backend": ..}; None if detection is unavailable or failed.
+    doctor = the turns of the first speaker (the examiner opens the recording); the therapist picks who else is out in the UI."""
+    for backend, fn in (("pyannote", _pyannote_turns), ("ecapa", _ecapa_turns)):
+        try:
+            turns = fn(audio, sr, n) if fn is _pyannote_turns else fn(audio, sr)
+        except Exception as e:   # optional feature: a failing backend falls through to the next, then to "analyse everything"
+            import sys
+            print(f"diarize ({backend}) failed: {type(e).__name__}: {e}", file=sys.stderr)
+            continue
+        if turns is None:
+            continue
+        spans = [(t["start"], t["end"]) for t in turns]
+        labels = np.array([t["speaker"] for t in turns])
+        doctor = doctor_ranges(spans, labels, join_gap=0.3) if len(set(labels)) > 1 else []
+        return {"turns": turns, "doctor": [{"start": round(s, 2), "end": round(e, 2)} for s, e in doctor], "backend": backend}
+    return None

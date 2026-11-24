@@ -112,7 +112,7 @@ namespace NeuroVox.WebApi.Services
             var aiKey = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
             // 0 = never exit when idle (always-on); the keeper decides when kernels are needed.
             var idle = config.GetValue("NeuroVox:KaggleAlwaysOn", false) ? 0 : config.GetValue("NeuroVox:KaggleIdleMinutes", 20);
-            var code = BuildKernel(apiUrl.TrimEnd('/'), a.CustomerId, registerToken, aiKey, idle);
+            var code = BuildKernel(apiUrl.TrimEnd('/'), a.CustomerId, registerToken, aiKey, idle, config["NeuroVox:HfToken"] ?? "");
 
             a.RegisterTokenHash = Hash(registerToken);   // set before the push: the kernel may call back within seconds
             a.EncryptedAiKey = protector.Protect(aiKey, "ai:" + a.Id);
@@ -149,7 +149,7 @@ namespace NeuroVox.WebApi.Services
             return Convert.ToBase64String(ms.ToArray());
         }
 
-        public static string BuildKernel(string apiUrl, Guid customerId, string registerToken, string aiKey, int idleMinutes)
+        public static string BuildKernel(string apiUrl, Guid customerId, string registerToken, string aiKey, int idleMinutes, string hfToken = "")
         {
             var src = JsonSerializer.Serialize(new Dictionary<string, string>
             {
@@ -166,6 +166,7 @@ namespace NeuroVox.WebApi.Services
                 .Replace("__CUSTOMER_ID__", customerId.ToString())
                 .Replace("__REGISTER_TOKEN__", registerToken)
                 .Replace("__AI_KEY__", aiKey)
+                .Replace("__HF_TOKEN__", hfToken)
                 .Replace("__VERSION__", CurrentVersion)
                 .Replace("__IDLE_MINUTES__", idleMinutes.ToString());
         }

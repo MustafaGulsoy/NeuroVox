@@ -152,7 +152,7 @@ namespace NeuroVox.WebApi.Background
             AnalysisResult? result;
             // Therapist-set doctor ranges win; without them the host detects the doctor automatically.
             var manual = rec.DoctorSegmentsSource == "manual" ? DoctorSegments.Parse(rec.DoctorSegmentsJson) : null;
-            try { result = await client.AnalyzeAsync(lease.Host, rec.AudioFilePath, rec.CustomerId, rec.VisitId, rec.Id, manual); }
+            try { result = await client.AnalyzeAsync(lease.Host, rec.AudioFilePath, rec.CustomerId, rec.VisitId, rec.Id, manual, rec.ExpectedSpeakers); }
             catch (HttpRequestException)
             {
                 // A fresh Kaggle tunnel can take minutes to resolve: stay queued and retry instead of failing the recording.
@@ -178,6 +178,8 @@ namespace NeuroVox.WebApi.Background
             }
 
             if (result.Words is { Count: > 0 }) rec.TranscriptWordsJson = System.Text.Json.JsonSerializer.Serialize(result.Words, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));   // timing only, independent of a hand-corrected transcript
+
+            if (result.Speakers is not null) rec.SpeakerTurnsJson = System.Text.Json.JsonSerializer.Serialize(result.Speakers, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
 
             if (manual is null && result.DoctorSource == "auto")   // auto result is only a suggestion for the therapist to correct
             {

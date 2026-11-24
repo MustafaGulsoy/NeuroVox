@@ -24,6 +24,8 @@ subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "faster-whi
                        "python-multipart==0.0.20", "uvicorn", "fastapi", "joblib", "av>=13"])
 subprocess.call([sys.executable, "-m", "pip", "install", "-q", "-U", "transformers", "accelerate"])   # LLM grammar/semantic review (GPU only)
 subprocess.call([sys.executable, "-m", "pip", "install", "-q", "speechbrain"])   # doctor/patient separation (optional: without it the whole recording is analysed)
+if "__HF_TOKEN__":   # optional: pyannote finds any number of speakers (gated Hugging Face model, needs this token); without it the 2-speaker ECAPA path runs
+    subprocess.call([sys.executable, "-m", "pip", "install", "-q", "pyannote.audio"])
 for vad in ("webrtcvad-wheels", "webrtcvad"):   # optional: app.py falls back to no pause detection without it
     if subprocess.call([sys.executable, "-m", "pip", "install", "-q", vad]) == 0:
         break
@@ -34,7 +36,7 @@ except Exception:
     HAS_GPU = False
 
 env = dict(os.environ, NEUROVOX_AI_API_KEY="__AI_KEY__", NEUROVOX_DEVICE="cuda" if HAS_GPU else "cpu",
-           NEUROVOX_STT_MODEL="large-v3" if HAS_GPU else "small", HF_HOME="/kaggle/working/hf")
+           NEUROVOX_STT_MODEL="large-v3" if HAS_GPU else "small", HF_HOME="/kaggle/working/hf", HF_TOKEN="__HF_TOKEN__")
 srv = subprocess.Popen([sys.executable, "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", "8000"], cwd=W, env=env)
 
 cf = "/kaggle/working/cloudflared"

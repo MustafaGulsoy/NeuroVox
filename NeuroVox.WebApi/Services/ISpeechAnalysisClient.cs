@@ -13,6 +13,8 @@ namespace NeuroVox.WebApi.Services
         public bool IsCandidateAnnotation { get; set; } = true;
     }
 
+    public record SpeakerTurnDto(double Start, double End, int Speaker);
+
     public record WordDto(double S, double E, string W, double? P = null);   // P = recognizer confidence 0..1
 
     public class AnalysisResult
@@ -24,6 +26,7 @@ namespace NeuroVox.WebApi.Services
         public List<MeasurementDto> Measurements { get; set; } = new();
         public List<SegmentDto>? DoctorSegments { get; set; }
         public List<WordDto>? Words { get; set; }
+        public List<SpeakerTurnDto>? Speakers { get; set; }
         public string? DoctorSource { get; set; }   // "auto" when the host detected the doctor itself
     }
 
@@ -32,7 +35,7 @@ namespace NeuroVox.WebApi.Services
     public interface ISpeechAnalysisClient
     {
         /// <param name="excludeDoctor">Therapist-set doctor ranges to cut out (empty = nothing to cut); null = let the host detect the doctor.</param>
-        Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId, IReadOnlyList<SegmentDto>? excludeDoctor = null);
+        Task<AnalysisResult?> AnalyzeAsync(AiHost host, string audioFilePath, Guid customerId, Guid visitId, Guid recordingId, IReadOnlyList<SegmentDto>? excludeDoctor = null, int? expectedSpeakers = null);
         /// <summary>Trains on the host; returns the artifact zip, or the reason it failed.</summary>
         Task<(byte[]? Zip, string? Error)> TrainAsync(AiHost host, string csv);
                 /// <summary>Two-group statistics (numbers only) from any online AI host: {feature: {a:[..], b:[..]}} -> {results:[..]}.</summary>

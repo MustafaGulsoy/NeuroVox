@@ -94,6 +94,24 @@ const PEAKS = 6000;
                 </h2>
               </header>
               <div class="muted" style="margin-bottom:10px">Doktorun sesini dalga formunda seçip işaretleyin; analizde bu aralıklar çıkarılır, yalnızca hasta konuşması ölçülür. Doğru olana kadar düzeltip yeniden analiz edebilirsiniz.</div>
+              <label class="row" style="gap:8px;align-items:center;margin-bottom:10px">Konuşan kişi sayısı
+                <select class="input" style="width:auto" [ngModel]="nSpeakers()" (ngModelChange)="nSpeakers.set(+$event)" name="nsp">
+                  @for (n of [2,3,4,5,6]; track n) { <option [ngValue]="n">{{ n }}</option> }
+                </select>
+                <span class="muted">Yeniden analizde konuşmacılar bu sayıya göre ayrılır.</span>
+              </label>
+              @if (speakerList().length > 1) {
+                <div style="margin-bottom:10px">
+                  <div class="muted" style="margin-bottom:6px">Konuşmacılar: analiz dışı bırakmak istediklerinizi işaretleyin (doktor, yakınlar).</div>
+                  @for (s of speakerList(); track s.id) {
+                    <label class="row" style="gap:8px;align-items:center;margin:4px 0">
+                      <input type="checkbox" [checked]="s.excluded" (change)="toggleSpeaker(s.id)" />
+                      <i class="dot" [style.background]="spkColor(s.id)"></i>
+                      <b>Konuşmacı {{ s.id + 1 }}</b> <span class="muted">{{ s.secs.toFixed(0) }} sn · {{ s.excluded ? 'analiz dışı' : 'hasta olarak ölçülüyor' }}</span>
+                    </label>
+                  }
+                </div>
+              }
               <div class="row" style="gap:8px;flex-wrap:wrap">
                 <button class="btn sm" type="button" (click)="addDoctor()" [disabled]="!sel()" title="Seçimi doktor olarak işaretle (D)"><kbd>D</kbd> Seçimi doktor yap</button>
                 <button class="btn sm" type="button" (click)="doctor.set([]); doctorDirty.set(true); queueDraw()" [disabled]="!doctor().length">Hepsini temizle</button>
@@ -128,7 +146,7 @@ const PEAKS = 6000;
                 </div>
               } @else if (turns().length) {
                 @for (t of turns(); track $index) {
-                  <p style="line-height:1.7;margin:0 0 8px"><b [style.color]="t.doctor ? '#b45309' : 'inherit'">{{ t.doctor ? 'Doktor' : 'Hasta' }}</b> <span class="muted">{{ fmtTime(t.start) }}</span> · @for (p of t.parts; track $index) { <span [style.background]="p.low ? 'rgba(245,158,11,.35)' : 'none'" [title]="p.low ? 'Düşük güven: sesten kontrol edin' : ''">{{ p.w }} </span> }</p>
+                  <p style="line-height:1.7;margin:0 0 8px"><b [style.color]="spkColor(t.speaker)">{{ t.speaker < 0 ? '?' : 'Konuşmacı ' + (t.speaker + 1) }}</b>@if (t.doctor) { <span class="badge">analiz dışı</span> } <span class="muted">{{ fmtTime(t.start) }}</span> · @for (p of t.parts; track $index) { <span [style.background]="p.low ? 'rgba(245,158,11,.35)' : 'none'" [title]="p.low ? 'Düşük güven: sesten kontrol edin' : ''">{{ p.w }} </span> }</p>
                 }
               } @else if (rec()!.transcriptText) { <p style="white-space:pre-wrap;line-height:1.7">{{ rec()!.transcriptText }}</p> }
               @else { <p class="muted">Transkript henüz yok. Kayıtlar sayfasından analizi başlatın ya da elle yazın.</p> }
@@ -187,20 +205,46 @@ export class AnnotatePage implements OnInit, OnDestroy {
   anns = signal<Annotation[]>([]);
   doctor = signal<{ start: number; end: number }[]>([]);
   doctorDirty = signal(false);
+  nSpeakers = signal(2);   // how many people talk; sent with the next re-analysis
   // Transcript as turns: consecutive words by the same speaker; a word is the doctor's when its midpoint is inside a doctor range.
   turns = computed(() => {
     const r = this.rec();
     if (!r?.words?.length || r.transcriptSource === 'manual') return [];   // a hand-corrected text no longer matches the word list
-    const out: { doctor: boolean; start: number; parts: { w: string; low: boolean }[] }[] = [];
+    const sp = r.speakers ?? [];
+    const out: { doctor: boolean; speaker: number; start: number; parts: { w: string; low: boolean }[] }[] = [];
     for (const w of r.words) {
       const mid = (w.s + w.e) / 2;
       const doctor = this.doctor().some(d => mid >= d.start && mid < d.end);
+      const speaker = sp.find(t => mid >= t.start && mid < t.end)?.speaker ?? -1;   // -1: between turns, no speaker known
       const last = out[out.length - 1];
       const part = { w: w.w, low: (w.p ?? 1) < 0.5 };   // low recognizer confidence: check these words against the audio first
-      if (last && last.doctor === doctor) last.parts.push(part); else out.push({ doctor, start: w.s, parts: [part] });
+      if (last && last.doctor === doctor && last.speaker === speaker) last.parts.push(part); else out.push({ doctor, speaker, start: w.s, parts: [part] });
     }
     return out;
   });
+  // Speakers found by diarization; "excluded" = most of their speech lies inside the doctor ranges.
+  speakerList = computed(() => {
+    const sp = this.rec()?.speakers ?? [];
+    return [...new Set(sp.map(t => t.speaker))].sort((a, b) => a - b).map(id => {
+      const mine = sp.filter(t => t.speaker === id);
+      const secs = mine.reduce((a, t) => a + t.end - t.start, 0);
+      const inside = mine.reduce((a, t) => a + this.doctor().reduce((b, d) => b + Math.max(0, Math.min(t.end, d.end) - Math.max(t.start, d.start)), 0), 0);
+      return { id, secs, excluded: secs > 0 && inside / secs >= 0.5 };
+    });
+  });
+  spkColor(id: number) { return id < 0 ? '#9ca3af' : ['#2563eb', '#b45309', '#059669', '#9333ea', '#dc2626'][id % 5]; }
+  toggleSpeaker(id: number) {
+    const mine = (this.rec()?.speakers ?? []).filter(t => t.speaker === id).map(t => ({ start: t.start, end: t.end }));
+    const exclude = !this.speakerList().find(s => s.id === id)?.excluded;
+    let next: { start: number; end: number }[] = [];
+    if (exclude) next = [...this.doctor(), ...mine];
+    else next = this.doctor().flatMap(d => mine.reduce((parts, m) => parts.flatMap(p => (m.end <= p.start || m.start >= p.end) ? [p]
+      : [{ start: p.start, end: Math.min(p.end, m.start) }, { start: Math.max(p.start, m.end), end: p.end }].filter(x => x.end - x.start > 0.05)), [d]));
+    next.sort((a, b) => a.start - b.start);
+    const merged: { start: number; end: number }[] = [];
+    for (const d of next) { const l = merged[merged.length - 1]; if (l && d.start <= l.end + 0.3) l.end = Math.max(l.end, d.end); else merged.push({ ...d }); }
+    this.doctor.set(merged); this.doctorDirty.set(true); this.queueDraw();
+  }
   fmtTime = fmtDuration;
   audioUrl = signal<string | null>(null);
   busy = signal(false);
@@ -250,7 +294,7 @@ export class AnnotatePage implements OnInit, OnDestroy {
     this.api.recording(this.id()).subscribe({
       next: r => {
         this.rec.set(r);
-        this.doctor.set(r.doctorSegments ?? []);
+        this.doctor.set(r.doctorSegments ?? []); this.nSpeakers.set(r.expectedSpeakers ?? 2);
         this.duration.set(r.recordingDurationSeconds || 0);
         // <audio> cannot send the bearer token, so the audio is fetched as a blob (also decoded for the waveform).
         if (r.hasAudio) this.api.audio(r.id).subscribe({
@@ -445,7 +489,7 @@ export class AnnotatePage implements OnInit, OnDestroy {
   removeDoctor(i: number) { this.doctor.update(v => v.filter((_, j) => j !== i)); this.doctorDirty.set(true); this.queueDraw(); }
   saveDoctor(reanalyze: boolean) {
     this.busy.set(true);
-    this.api.saveDoctorSegments(this.id(), this.doctor(), reanalyze).subscribe({
+    this.api.saveDoctorSegments(this.id(), this.doctor(), reanalyze, this.nSpeakers()).subscribe({
       next: r => {
         this.busy.set(false); this.rec.set(r); this.doctor.set(r.doctorSegments ?? []); this.doctorDirty.set(false); this.queueDraw();
         this.toast.ok(reanalyze ? 'Kaydedildi, yeniden analiz kuyruğa alındı' : 'Doktor aralıkları kaydedildi');

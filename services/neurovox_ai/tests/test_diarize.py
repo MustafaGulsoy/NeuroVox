@@ -43,3 +43,19 @@ def test_one_speaker_or_too_few_turns_is_not_split():
     a = rng.normal(size=64)
     assert diarize.cluster_two(np.stack([a + rng.normal(scale=.01, size=64) for _ in range(8)])) is None
     assert diarize.cluster_two(np.stack([a, -a])) is None
+
+
+def test_find_speakers_prefers_pyannote_then_falls_back_and_returns_first_speaker_as_doctor(monkeypatch):
+    import numpy as np
+    turns = [{"start": 0, "end": 3, "speaker": 0}, {"start": 3.2, "end": 6, "speaker": 1}, {"start": 6.1, "end": 8, "speaker": 2},
+             {"start": 8.5, "end": 9.5, "speaker": 1}]
+    monkeypatch.setattr(diarize, "_pyannote_turns", lambda a, sr, n=None: turns)
+    r = diarize.find_speakers(np.zeros(16000))
+    assert r["backend"] == "pyannote" and len({t["speaker"] for t in r["turns"]}) == 3
+    assert r["doctor"] == [{"start": 0, "end": 3}]   # only the first speaker is cut by default
+
+    def boom(a, sr, n=None): raise RuntimeError("no gpu")
+    monkeypatch.setattr(diarize, "_pyannote_turns", boom)
+    monkeypatch.setattr(diarize, "_ecapa_turns", lambda a, sr: [])
+    r = diarize.find_speakers(np.zeros(16000))
+    assert r == {"turns": [], "doctor": [], "backend": "ecapa"}   # a failing backend falls through; [] = one speaker

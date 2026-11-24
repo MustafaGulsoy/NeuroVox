@@ -82,7 +82,8 @@ class AnalyzeRequest(BaseModel):
     language: str = "tr"
     information_units: list[str] | None = None
     exclude_segments: list[list[float]] | None = None   # doctor ranges [start, end] to cut out; [] = cut nothing
-    diarize: bool = False                                  # no ranges given: detect the doctor automatically
+    num_speakers: int | None = None                        # how many people talk (therapist input); default 2
+    diarize: bool = False                                  # find the speakers (labels the transcript; with no exclude_segments the first speaker is cut as the doctor)
 
 
 VAGUE_TOKENS = ["şey", "yani", "falan", "filan", "bir şey", "öyle", "şöyle"]
@@ -235,7 +236,7 @@ def analyze(req: AnalyzeRequest):
 # Remote mode (no shared volume): the API uploads the audio bytes instead of a file name.
 @app.post("/analyze-upload", dependencies=[Depends(require_key)])
 def analyze_upload(file: UploadFile = File(...), language: str = Form("tr"), information_units: str | None = Form(None),
-                   exclude_segments: str | None = Form(None), diarize: bool = Form(False)):
+                   exclude_segments: str | None = Form(None), diarize: bool = Form(False), num_speakers: int | None = Form(None)):
     import json
     units = json.loads(information_units) if information_units else None
     with tempfile.TemporaryDirectory() as d:
@@ -244,7 +245,7 @@ def analyze_upload(file: UploadFile = File(...), language: str = Form("tr"), inf
             while chunk := file.file.read(1 << 20):
                 f.write(chunk)
         return _analyze(path, AnalyzeRequest(audio_path="upload", language=language, information_units=units,
-                                             exclude_segments=json.loads(exclude_segments) if exclude_segments else None, diarize=diarize))
+                                             exclude_segments=json.loads(exclude_segments) if exclude_segments else None, diarize=diarize, num_speakers=num_speakers))
 
 
 def _analyze(audio_file: Path, req: AnalyzeRequest):
@@ -254,12 +255,12 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         raise HTTPException(status_code=422, detail=f"audio could not be decoded: {type(e).__name__}: {str(e)[:160]}")
     full_s = len(audio) / 16000
     doctor, doctor_source = [], None   # interviewer speech is cut out so only the patient is measured
+    found = diarize.find_speakers(audio, n=req.num_speakers) if req.diarize else None   # always: the speaker timeline labels the transcript even when the therapist set the ranges
+    speakers = found["turns"] if found else None
     if req.exclude_segments is not None:
         doctor, doctor_source = [(s, e) for s, e in req.exclude_segments], "manual"
-    elif req.diarize:
-        found = diarize.find_doctor_segments(audio)
-        if found is not None:   # [] = one speaker detected: still reported, so stale auto ranges get cleared
-            doctor, doctor_source = [(d["start"], d["end"]) for d in found], "auto"
+    elif found:   # [] = one speaker detected: still reported, so stale auto ranges get cleared
+        doctor, doctor_source = [(d["start"], d["end"]) for d in found["doctor"]], "auto"
     vad_audio = diarize.cut(audio, doctor, gap_s=0.0) if doctor else audio   # no padding here: the VAD counts digital silence as speech
     total_s = len(vad_audio) / 16000
     vad = vad_pause_stats(vad_audio)
@@ -348,7 +349,8 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
         "speech_duration_seconds": speech_s,
         "measurements": measurement_list,
         "doctor_segments": [{"start": s, "end": e} for s, e in doctor] if doctor_source == "auto" else None,
-        "doctor_source": doctor_source if doctor_source == "auto" else None,   # manual ranges already live in the API
+        "doctor_source": doctor_source if doctor_source == "auto" else None,
+        "speakers": speakers,   # manual ranges already live in the API
     }
 
 

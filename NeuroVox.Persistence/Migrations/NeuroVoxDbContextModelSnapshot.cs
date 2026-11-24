@@ -592,6 +592,9 @@ namespace NeuroVox.Persistence.Migrations
                     b.Property<string>("DoctorSegmentsSource")
                         .HasColumnType("text");
 
+                    b.Property<int?>("ExpectedSpeakers")
+                        .HasColumnType("integer");
+
                     b.Property<string>("InstructionVersion")
                         .IsRequired()
                         .HasColumnType("text");
@@ -616,6 +619,9 @@ namespace NeuroVox.Persistence.Migrations
 
                     b.Property<DateTime?>("RowUpdatedDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SpeakerTurnsJson")
+                        .HasColumnType("text");
 
                     b.Property<double?>("SpeechDurationSeconds")
                         .HasColumnType("double precision");

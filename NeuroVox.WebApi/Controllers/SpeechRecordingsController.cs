@@ -97,7 +97,8 @@ namespace NeuroVox.WebApi.Controllers
             r.SpeechDurationSeconds, r.RecordingEnvironment, r.MicrophoneDevice, r.AudioQuality,
             HasAudio = r.AudioFilePath != null, r.TranscriptText, r.TranscriptSource, r.TranscriberVersion,
             r.AnalysisStatus, r.AnalysisError, r.AnalyzedAt,
-            DoctorSegments = DoctorSegments.Parse(r.DoctorSegmentsJson), r.DoctorSegmentsSource,
+            DoctorSegments = DoctorSegments.Parse(r.DoctorSegmentsJson), r.DoctorSegmentsSource, r.ExpectedSpeakers,
+            Speakers = r.SpeakerTurnsJson is null ? null : (System.Text.Json.JsonElement?)System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(r.SpeakerTurnsJson),
             Words = r.TranscriptWordsJson is null ? null : (System.Text.Json.JsonElement?)System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(r.TranscriptWordsJson)
         };
 
@@ -249,7 +250,7 @@ namespace NeuroVox.WebApi.Controllers
             return Ok(ToDto(rec));
         }
 
-        public class DoctorSegmentsRequest { public List<SegmentDto>? Segments { get; set; } public bool Reanalyze { get; set; } }
+        public class DoctorSegmentsRequest { public List<SegmentDto>? Segments { get; set; } public bool Reanalyze { get; set; } public int? ExpectedSpeakers { get; set; } }
 
         // Therapist marks which ranges are the doctor's voice; they are cut out of the analysis ("manual" wins over auto-detection).
         // An empty list means "no doctor in this recording". Needs the auth."Endpoints" row from deploy/endpoint-delete-annotations.sql.
@@ -261,6 +262,7 @@ namespace NeuroVox.WebApi.Controllers
             if (rec is null) return NotFound();
             rec.DoctorSegmentsJson = DoctorSegments.ToJson(DoctorSegments.Normalize(body.Segments ?? [], rec.RecordingDurationSeconds));
             rec.DoctorSegmentsSource = "manual";
+            if (body.ExpectedSpeakers is >= 2 and <= 6) rec.ExpectedSpeakers = body.ExpectedSpeakers;
             var queue = body.Reanalyze && !string.IsNullOrWhiteSpace(rec.AudioFilePath)
                 && rec.AnalysisStatus is not (AnalysisStatus.Queued or AnalysisStatus.Running);
             if (queue) { rec.AnalysisStatus = AnalysisStatus.Queued; rec.AnalysisError = null; }

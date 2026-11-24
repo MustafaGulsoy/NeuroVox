@@ -23,7 +23,7 @@ namespace NeuroVox.Tests
         {
             public Dictionary<string, Dictionary<string, List<double>>>? CompareInput;
             public Dictionary<string, double>? PredictInput;
-            public Task<AnalysisResult?> AnalyzeAsync(AiHost h, string p, Guid c, Guid v, Guid r, IReadOnlyList<SegmentDto>? x = null) => Task.FromResult<AnalysisResult?>(null);
+            public Task<AnalysisResult?> AnalyzeAsync(AiHost h, string p, Guid c, Guid v, Guid r, IReadOnlyList<SegmentDto>? x = null, int? n = null) => Task.FromResult<AnalysisResult?>(null);
             public Task<(byte[]? Zip, string? Error)> TrainAsync(AiHost h, string csv) => Task.FromResult<(byte[]?, string?)>((null, "n/a"));
             public Task<JsonElement?> CompareAsync(Guid cid, Dictionary<string, Dictionary<string, List<double>>> f)
             {
