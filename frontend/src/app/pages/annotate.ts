@@ -128,7 +128,7 @@ const PEAKS = 6000;
                 </div>
               } @else if (turns().length) {
                 @for (t of turns(); track $index) {
-                  <p style="line-height:1.7;margin:0 0 8px"><b [style.color]="t.doctor ? '#b45309' : 'inherit'">{{ t.doctor ? 'Doktor' : 'Hasta' }}</b> <span class="muted">{{ fmtTime(t.start) }}</span> · {{ t.text }}</p>
+                  <p style="line-height:1.7;margin:0 0 8px"><b [style.color]="t.doctor ? '#b45309' : 'inherit'">{{ t.doctor ? 'Doktor' : 'Hasta' }}</b> <span class="muted">{{ fmtTime(t.start) }}</span> · @for (p of t.parts; track $index) { <span [style.background]="p.low ? 'rgba(245,158,11,.35)' : 'none'" [title]="p.low ? 'Düşük güven: sesten kontrol edin' : ''">{{ p.w }} </span> }</p>
                 }
               } @else if (rec()!.transcriptText) { <p style="white-space:pre-wrap;line-height:1.7">{{ rec()!.transcriptText }}</p> }
               @else { <p class="muted">Transkript henüz yok. Kayıtlar sayfasından analizi başlatın ya da elle yazın.</p> }
@@ -191,12 +191,13 @@ export class AnnotatePage implements OnInit, OnDestroy {
   turns = computed(() => {
     const r = this.rec();
     if (!r?.words?.length || r.transcriptSource === 'manual') return [];   // a hand-corrected text no longer matches the word list
-    const out: { doctor: boolean; start: number; text: string }[] = [];
+    const out: { doctor: boolean; start: number; parts: { w: string; low: boolean }[] }[] = [];
     for (const w of r.words) {
       const mid = (w.s + w.e) / 2;
       const doctor = this.doctor().some(d => mid >= d.start && mid < d.end);
       const last = out[out.length - 1];
-      if (last && last.doctor === doctor) last.text += ' ' + w.w; else out.push({ doctor, start: w.s, text: w.w });
+      const part = { w: w.w, low: (w.p ?? 1) < 0.5 };   // low recognizer confidence: check these words against the audio first
+      if (last && last.doctor === doctor) last.parts.push(part); else out.push({ doctor, start: w.s, parts: [part] });
     }
     return out;
   });

@@ -175,10 +175,12 @@ namespace NeuroVox.WebApi.Controllers
                 StimulusVersion = stimulusVersion,
                 InstructionVersion = instructionVersion,
                 RecordingDurationSeconds = recordingDurationSeconds,
-                AudioFilePath = safeName
+                AudioFilePath = safeName,
+                AnalysisStatus = AnalysisStatus.Queued   // analysis starts by itself; the worker waits for a free AI host
             };
             await _write.AddAsync(rec);
             await _write.SaveAsync();
+            await _queue.EnqueueAsync(rec.Id);
             return Ok(new { rec.Id });
         }
 

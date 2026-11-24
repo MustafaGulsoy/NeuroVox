@@ -116,3 +116,10 @@ def test_analyze_labels_words_and_measures_only_patient(app_module, monkeypatch)
     r = app._analyze(Path("x.wav"), app.AnalyzeRequest(audio_path="x.wav", exclude_segments=[[0, 3]]))
     assert r["transcript"] == "Çocuk bahçede"
     assert [x["w"] for x in r["words"]] == ["Anlat", "bakalım", "Çocuk", "bahçede"]
+
+
+def test_eval_wer_counts_word_edits():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "eval"))
+    import evaluate
+    ref, hyp = evaluate.norm("Çocuk bahçede, oynuyor."), evaluate.norm("çocuk bahçede koşuyor")
+    assert evaluate.edits(ref, hyp) == 1 and len(ref) == 3

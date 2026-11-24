@@ -45,6 +45,17 @@ ALGORITHM_VERSION = "1.0"
 
 _whisper_model = None
 
+# Speech of aphasic patients is short, repetitive and full of silences: Whisper's habits (carrying the previous text forward, inventing words
+# over silence, "fixing" repetitions) hurt exactly there. NEUROVOX_STT_PROMPT can steer towards verbatim spelling (off until it is measured).
+TRANSCRIBE_OPTS = dict(
+    beam_size=5, word_timestamps=True,
+    vad_filter=os.environ.get("NEUROVOX_STT_VAD") == "1", vad_parameters={"threshold": 0.3, "min_silence_duration_ms": 500, "speech_pad_ms": 400},
+    # ^ off by default: on the one measured recording the strict VAD dropped the quiet patient's speech (13 reference words -> 2)
+    condition_on_previous_text=False,                                    # stops "Çınar'a Çınar'a ..." loops from feeding themselves
+    temperature=[0.0, 0.2, 0.4], compression_ratio_threshold=2.4, no_speech_threshold=0.6,
+    initial_prompt=os.environ.get("NEUROVOX_STT_PROMPT") or None,
+)
+
 
 def get_whisper():
     global _whisper_model
@@ -256,7 +267,7 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
     # One pass over the whole recording (cutting the doctor first made Whisper loop on the stitched audio, and left no trace of
     # who said what). Word times let the UI label Doktor/Hasta; the measured text is only the words outside the doctor ranges.
     model = get_whisper()
-    all_segments = list(model.transcribe(audio, language=req.language, beam_size=5, word_timestamps=True)[0])
+    all_segments = list(model.transcribe(audio, language=req.language, **TRANSCRIBE_OPTS)[0])
 
     def is_doctor(w) -> bool:
         mid = (w.start + w.end) / 2
@@ -265,7 +276,7 @@ def _analyze(audio_file: Path, req: AnalyzeRequest):
     words = [w for seg in all_segments for w in (seg.words or []) if w.word.strip()]
     segments = [seg for seg in all_segments if any(not is_doctor(w) for w in (seg.words or []))] if doctor else all_segments
     text = " ".join(w.word.strip() for w in words if not is_doctor(w)).strip()
-    word_list = [{"s": round(w.start, 2), "e": round(w.end, 2), "w": w.word.strip()} for w in words]
+    word_list = [{"s": round(w.start, 2), "e": round(w.end, 2), "w": w.word.strip(), "p": round(getattr(w, "probability", 1.0), 2)} for w in words]
 
     lex = lexical_metrics(text)
     utterances = count_utterances(segments, text)

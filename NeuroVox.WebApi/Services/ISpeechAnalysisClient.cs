@@ -13,7 +13,7 @@ namespace NeuroVox.WebApi.Services
         public bool IsCandidateAnnotation { get; set; } = true;
     }
 
-    public record WordDto(double S, double E, string W);
+    public record WordDto(double S, double E, string W, double? P = null);   // P = recognizer confidence 0..1
 
     public class AnalysisResult
     {
