@@ -212,14 +212,16 @@ namespace NeuroVox.WebApi.Controllers
             if (rec is null) return NotFound();
             if (string.IsNullOrWhiteSpace(rec.AudioFilePath))
                 return BadRequest(new { title = "recording has no audio" });
-            if (rec.AnalysisStatus is AnalysisStatus.Queued or AnalysisStatus.Running)
-                return Accepted(new { rec.Id, status = rec.AnalysisStatus });
-
-            rec.AnalysisStatus = AnalysisStatus.Queued;
-            rec.AnalysisError = null;
-            await _write.SaveAsync();
+            // Sending again is always allowed: a waiting job is not duplicated (the queue absorbs it), a running one is repeated once it ends.
+            var before = rec.AnalysisStatus;
+            if (before is not AnalysisStatus.Running)
+            {
+                rec.AnalysisStatus = AnalysisStatus.Queued;
+                rec.AnalysisError = null;
+                await _write.SaveAsync();
+            }
             await _queue.EnqueueAsync(rec.Id);
-            return Accepted(new { rec.Id, status = rec.AnalysisStatus });
+            return Accepted(new { rec.Id, status = rec.AnalysisStatus, previous = before });
         }
 
         [HttpGet("{id}/analysis")]

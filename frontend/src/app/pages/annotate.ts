@@ -129,8 +129,14 @@ const PEAKS = 6000;
               }
               <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
                 <button class="btn" type="button" (click)="saveDoctor(false)" [disabled]="busy() || !doctorDirty()">Kaydet</button>
-                <button class="btn primary" type="button" (click)="saveDoctor(true)" [disabled]="busy() || !rec()!.hasAudio" title="Kaydeder ve kaydı yalnızca hasta sesiyle yeniden analiz eder">Kaydet ve yeniden analiz et</button>
+                <button class="btn primary" type="button" (click)="saveDoctor(true); sentNote.set(null)" [disabled]="busy() || !rec()!.hasAudio" title="Kaydeder ve kaydı yalnızca hasta sesiyle yeniden analiz eder">Kaydet ve yeniden analiz et</button>
               </div>
+              @if (sentNote(); as n) {
+                <div class="inline-note" [class]="'inline-note ' + n.kind" role="status">
+                  <i class="dot pulse" style="margin-top:6px;background:currentColor"></i>
+                  <div><b>{{ rec()!.analysisStatus === 3 ? 'Analiz tamamlandı' : rec()!.analysisStatus === 2 ? 'Analiz çalışıyor…' : rec()!.analysisStatus === 1 ? 'Kuyrukta, sıra bekliyor…' : 'Analiz başlatıldı' }}</b><br>{{ n.text }}</div>
+                </div>
+              }
             </section>
 
             <section class="card">
@@ -205,6 +211,7 @@ export class AnnotatePage implements OnInit, OnDestroy {
   anns = signal<Annotation[]>([]);
   doctor = signal<{ start: number; end: number }[]>([]);
   doctorDirty = signal(false);
+  sentNote = signal<{ kind: "ok" | "warn"; text: string } | null>(null);   // shown right under the buttons that started the analysis
   nSpeakers = signal(2);   // how many people talk; sent with the next re-analysis
   // Transcript as turns: consecutive words by the same speaker; a word is the doctor's when its midpoint is inside a doctor range.
   turns = computed(() => {
@@ -307,7 +314,22 @@ export class AnnotatePage implements OnInit, OnDestroy {
     this.loadAnns();
     this.api.aphasiaRating(this.id()).subscribe({ next: r => this.aphasia.set(r?.type ?? null), error: () => {} });
   }
+  // Refreshes the recording every few seconds while its analysis is queued or running, so progress and the finished result show up by themselves.
+  private pollTimer?: ReturnType<typeof setTimeout>;
+  private poll() {
+    clearTimeout(this.pollTimer);
+    this.pollTimer = setTimeout(() => this.api.recording(this.id()).subscribe({
+      next: r => {
+        if (!this.doctorDirty()) this.doctor.set(r.doctorSegments ?? []);
+        this.rec.set(r); this.queueDraw();
+        if (r.analysisStatus === 1 || r.analysisStatus === 2) this.poll();
+        else if (this.sentNote()) this.toast.ok(r.analysisStatus === 3 ? 'Analiz tamamlandı' : 'Analiz tamamlanamadı');
+      },
+      error: () => this.poll()
+    }), 6000);
+  }
   ngOnDestroy() {
+    clearTimeout(this.pollTimer);
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('resize', this.onResize);
     cancelAnimationFrame(this.raf);
@@ -493,6 +515,8 @@ export class AnnotatePage implements OnInit, OnDestroy {
       next: r => {
         this.busy.set(false); this.rec.set(r); this.doctor.set(r.doctorSegments ?? []); this.doctorDirty.set(false); this.queueDraw();
         this.toast.ok(reanalyze ? 'Kaydedildi, yeniden analiz kuyruğa alındı' : 'Doktor aralıkları kaydedildi');
+        if (reanalyze) this.poll();
+        this.sentNote.set(reanalyze ? { kind: 'ok', text: 'Yeniden analiz başlatıldı: kayıt kuyruğa alındı. AI sunucusu hazır olunca işler; durum sağ üstteki rozette görünür, sayfayı açık bırakabilirsiniz.' } : null);
       },
       error: e => { this.busy.set(false); this.toast.err(e); }
     });

@@ -142,3 +142,15 @@ table.table { width: 100%; border-collapse: collapse; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 .table td.sig b { color: var(--ok); }
+
+/* note that appears right next to the button that was just pressed (analysis started / already queued) */
+.pop-wrap { position: relative; display: inline-flex; }
+.pop-note { position: absolute; right: 0; top: calc(100% + 8px); z-index: 30; width: 260px; padding: 10px 12px; border-radius: 10px; font-size: .85rem; line-height: 1.4; text-align: left;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); box-shadow: 0 8px 24px rgb(0 0 0 / .18); animation: fade .15s ease-out;
+  &::before { content: ''; position: absolute; right: 14px; top: -6px; width: 10px; height: 10px; transform: rotate(45deg); background: inherit; border-left: 1px solid var(--border); border-top: 1px solid var(--border); }
+  b { display: block; margin-bottom: 2px; }
+  &.ok { border-color: var(--ok); } &.warn { border-color: var(--warn); }
+}
+.inline-note { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: .88rem; background: var(--surface-2); border: 1px solid var(--border);
+  &.ok { border-color: var(--ok); background: var(--ok-soft); } &.warn { border-color: var(--warn); background: var(--warn-soft); }
+}

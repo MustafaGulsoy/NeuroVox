@@ -53,8 +53,14 @@ import { Empty, Modal, StatusBadge, fmtDate, fmtDateTime, fmtDuration } from '..
                   <td class="right"><div class="row" style="justify-content:flex-end;gap:6px">
                     <a class="btn sm" [routerLink]="['/annotate', r.id]" title="Anotasyon"><app-icon name="tag" /></a>
                     <button class="btn sm" (click)="showAnalysis(r)" [disabled]="r.analysisStatus !== 3" title="Ölçümleri gör"><app-icon name="eye" /></button>
-                    <button class="btn sm" (click)="analyze(r)" [disabled]="!r.hasAudio || r.analysisStatus === 1 || r.analysisStatus === 2" title="Analiz et">
-                      <app-icon [name]="r.analysisStatus === 3 ? 'refresh' : 'play'" /></button>
+                    <span class="pop-wrap">
+                      <button class="btn sm" (click)="analyze(r)" [disabled]="!r.hasAudio"
+                        [title]="r.analysisStatus === 1 ? 'Kuyrukta: tekrar gönder' : r.analysisStatus === 2 ? 'Çalışıyor: bitince yeniden çalıştır' : r.analysisStatus === 3 ? 'Yeniden analiz et' : 'Analiz et'">
+                        <app-icon [name]="r.analysisStatus === 3 || r.analysisStatus === 1 || r.analysisStatus === 2 ? 'refresh' : 'play'" /></button>
+                      @if (note()?.id === r.id) {
+                        <div class="pop-note" [class]="'pop-note ' + note()!.kind" role="status"><b>{{ note()!.title }}</b>{{ note()!.text }}</div>
+                      }
+                    </span>
                     <button class="btn sm danger" (click)="del.set(r)" title="Sil"><app-icon name="trash" /></button>
                   </div></td>
                 </tr>
@@ -180,8 +186,21 @@ export class RecordingsPage implements OnInit, OnDestroy {
   }
   pickVisit(id: string) { this.vid.set(id); this.load(); }
 
+  // The note appears under the button that was pressed, so it is clear which recording was sent and what happens next.
+  note = signal<{ id: string; kind: 'ok' | 'warn'; title: string; text: string } | null>(null);
+  private noteTimer?: ReturnType<typeof setTimeout>;
   analyze(r: Recording) {
-    this.api.analyze(r.id).subscribe({ next: () => { this.toast.ok('Analiz kuyruğa alındı'); this.load(true); }, error: e => this.toast.err(e) });
+    const was = r.analysisStatus;
+    this.api.analyze(r.id).subscribe({
+      next: () => {
+        this.note.set(was === 1 ? { id: r.id, kind: 'warn', title: 'Zaten kuyrukta', text: 'Yeniden gönderildi. AI sunucusu (Kaggle) boşalınca otomatik başlar; sunucu açılırken birkaç dakika sürebilir.' }
+          : was === 2 ? { id: r.id, kind: 'warn', title: 'Şu an çalışıyor', text: 'Bu çalışma bitince analiz bir kez daha otomatik yapılacak.' }
+          : { id: r.id, kind: 'ok', title: 'Analiz başlatıldı', text: 'Kayıt kuyruğa alındı. Sıra gelince AI sunucusu işler; durumu bu satırdaki rozetten izleyebilirsiniz.' });
+        clearTimeout(this.noteTimer); this.noteTimer = setTimeout(() => this.note.set(null), 8000);
+        this.load(true);
+      },
+      error: e => this.toast.err(e)
+    });
   }
   showAnalysis(r: Recording) {
     this.api.analysis(r.id).subscribe({ next: a => { this.anaRec.set(r); this.ana.set(a); }, error: e => this.toast.err(e) });

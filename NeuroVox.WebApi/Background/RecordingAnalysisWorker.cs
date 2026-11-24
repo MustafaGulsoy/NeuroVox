@@ -12,8 +12,34 @@ namespace NeuroVox.WebApi.Background
     public class AnalysisQueue
     {
         private readonly Channel<(JobKind Kind, Guid Id)> _channel = Channel.CreateUnbounded<(JobKind, Guid)>();
-        public ValueTask EnqueueAsync(Guid id, JobKind kind = JobKind.Analysis) => _channel.Writer.WriteAsync((kind, id));
-        public IAsyncEnumerable<(JobKind Kind, Guid Id)> ReadAllAsync(CancellationToken ct) => _channel.Reader.ReadAllAsync(ct);
+        private readonly HashSet<(JobKind, Guid)> _queued = [];   // waiting in the channel (or for a retry): pressing "analyze" again must not pile up copies
+        private readonly object _gate = new();
+
+        public ValueTask EnqueueAsync(Guid id, JobKind kind = JobKind.Analysis)
+        {
+            lock (_gate) if (!_queued.Add((kind, id))) return ValueTask.CompletedTask;
+            return _channel.Writer.WriteAsync((kind, id));
+        }
+
+        /// <summary>Puts the job back after a delay; until then it counts as queued, so repeated sends are absorbed.</summary>
+        public void EnqueueLater(Guid id, JobKind kind, TimeSpan delay, CancellationToken ct)
+        {
+            lock (_gate) if (!_queued.Add((kind, id))) return;
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(delay, ct); await _channel.Writer.WriteAsync((kind, id), ct); }
+                catch (OperationCanceledException) { }
+            }, CancellationToken.None);
+        }
+
+        public async IAsyncEnumerable<(JobKind Kind, Guid Id)> ReadAllAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await foreach (var job in _channel.Reader.ReadAllAsync(ct))
+            {
+                lock (_gate) _queued.Remove(job);
+                yield return job;
+            }
+        }
     }
 
     // Analysis and training jobs share one queue. A job runs when an AI host is free (one job per host, so several Kaggle
@@ -24,6 +50,8 @@ namespace NeuroVox.WebApi.Background
         private static readonly TimeSpan WaitForHost = TimeSpan.FromSeconds(20);
         public const string WaitingText = "Bekliyor: AI sunucusu (Kaggle kernel) hazır değil veya meşgul";
         private readonly SemaphoreSlim _slots = new(4);
+        private readonly HashSet<(JobKind, Guid)> _inflight = [], _rerun = [];
+        private readonly object _gate = new();
 
         protected override async Task ExecuteAsync(CancellationToken ct)
         {
@@ -42,17 +70,14 @@ namespace NeuroVox.WebApi.Background
 
             await foreach (var job in queue.ReadAllAsync(ct))
             {
+                lock (_gate) if (!_inflight.Add(job)) { _rerun.Add(job); continue; }   // sent again while running: run once more when this run ends
                 await _slots.WaitAsync(ct);
                 _ = Task.Run(async () =>
                 {
                     try
                     {
                         var done = job.Kind == JobKind.Analysis ? await RunAsync(job.Id, ct) : await RunTrainingAsync(job.Id, ct);
-                        if (!done)   // no free host: look again shortly, without blocking other jobs
-                        {
-                            await Task.Delay(WaitForHost, ct);
-                            await queue.EnqueueAsync(job.Id, job.Kind);
-                        }
+                        if (!done) queue.EnqueueLater(job.Id, job.Kind, WaitForHost, ct);   // no free host: look again shortly, without blocking other jobs
                     }
                     catch (OperationCanceledException) { }
                     catch (Exception ex)
@@ -60,7 +85,13 @@ namespace NeuroVox.WebApi.Background
                         log.LogError(ex, "{Kind} job crashed for {Id}", job.Kind, job.Id);
                         await MarkFailedAsync(job.Kind, job.Id, ex.Message);
                     }
-                    finally { _slots.Release(); }
+                    finally
+                    {
+                        bool again;
+                        lock (_gate) { _inflight.Remove(job); again = _rerun.Remove(job); }
+                        _slots.Release();
+                        if (again) await queue.EnqueueAsync(job.Id, job.Kind);
+                    }
                 }, CancellationToken.None);
             }
         }
